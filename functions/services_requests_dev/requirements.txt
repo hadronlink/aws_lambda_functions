@@ -1,0 +1,2 @@
+docutils==0.21.2
+geohash2==1.1

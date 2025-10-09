@@ -1,0 +1,120 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+  
+  build:
+    commands:
+      - echo "Starting Lambda deployment process..."
+      - |
+        # Get the branch name
+        BRANCH=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}
+        echo "Branch: $BRANCH"
+        
+        # Determine deployment target based on branch
+        if [ "$BRANCH" = "main" ]; then
+          SUFFIX=""
+          echo "========================================="
+          echo "Deploying to PRODUCTION functions"
+          echo "========================================="
+        elif [ "$BRANCH" = "dev" ]; then
+          SUFFIX="_dev"
+          echo "========================================="
+          echo "Deploying to DEV functions"
+          echo "========================================="
+        else
+          echo "Branch $BRANCH is not configured for deployment. Exiting."
+          exit 0
+        fi
+        
+        # Deploy each function
+        for dir in functions/*/; do
+          FUNC_NAME=$(basename "$dir")
+          
+          # Skip if function doesn't match the branch pattern
+          if [ "$SUFFIX" = "" ] && [[ "$FUNC_NAME" == *"_dev" ]]; then
+            echo "→ Skipping $FUNC_NAME (dev function)"
+            continue
+          fi
+          if [ "$SUFFIX" = "_dev" ] && [[ "$FUNC_NAME" != *"_dev" ]]; then
+            echo "→ Skipping $FUNC_NAME (prod function)"
+            continue
+          fi
+          
+          PY_FILE="functions/${FUNC_NAME}/${FUNC_NAME}.py"
+          
+          if [ -f "$PY_FILE" ]; then
+            echo ""
+            echo "========================================="
+            echo "📦 Deploying: $FUNC_NAME"
+            echo "========================================="
+            
+            # Create a temporary directory for packaging
+            PACKAGE_DIR=$(mktemp -d)
+            
+            cd "functions/${FUNC_NAME}"
+            
+            # Check if requirements.txt exists
+            if [ -f "requirements.txt" ]; then
+              echo "📚 Installing dependencies from requirements.txt..."
+              pip install -r requirements.txt -t "$PACKAGE_DIR" --quiet
+              
+              # Remove boto3 and botocore if they were installed (Lambda provides these)
+              echo "🧹 Removing boto3/botocore (provided by Lambda runtime)..."
+              rm -rf "$PACKAGE_DIR/boto3" "$PACKAGE_DIR/botocore" "$PACKAGE_DIR/boto3-"* "$PACKAGE_DIR/botocore-"* "$PACKAGE_DIR/s3transfer"* "$PACKAGE_DIR/jmespath"*
+            else
+              echo "📝 No dependencies (requirements.txt not found)"
+            fi
+            
+            # Copy all Python files to package directory
+            echo "📄 Copying Python files..."
+            cp *.py "$PACKAGE_DIR/"
+            
+            # Create deployment package
+            echo "📦 Creating deployment package..."
+            cd "$PACKAGE_DIR"
+            zip -r -q "/tmp/${FUNC_NAME}.zip" .
+            
+            # Get zip file size
+            ZIP_SIZE=$(du -h "/tmp/${FUNC_NAME}.zip" | cut -f1)
+            echo "📊 Package size: $ZIP_SIZE"
+            
+            # Update Lambda function code
+            echo "🚀 Updating Lambda function..."
+            aws lambda update-function-code \
+              --function-name "$FUNC_NAME" \
+              --zip-file "fileb:///tmp/${FUNC_NAME}.zip" \
+              --region us-east-2 \
+              --output json > /tmp/lambda_response.json
+            
+            if [ $? -eq 0 ]; then
+              echo "✅ Successfully deployed $FUNC_NAME"
+            else
+              echo "❌ Failed to deploy $FUNC_NAME"
+              cat /tmp/lambda_response.json
+              exit 1
+            fi
+            
+            # Cleanup
+            rm -rf "$PACKAGE_DIR"
+            rm -f "/tmp/${FUNC_NAME}.zip"
+            cd - > /dev/null
+            
+          else
+            echo "⚠️  Warning: $PY_FILE not found, skipping $FUNC_NAME"
+          fi
+        done
+        
+        echo ""
+        echo "========================================="
+        echo "✅ Deployment completed successfully!"
+        echo "========================================="
+
+artifacts:
+  files:
+    - '**/*'
