@@ -28,28 +28,37 @@ phases:
             
             if [ -f "requirements.txt" ]; then
               echo "📚 Installing dependencies..."
-              pip install -r requirements.txt -t "$PACKAGE_DIR" --quiet
+              pip install -r requirements.txt -t "$PACKAGE_DIR" --quiet || {
+                echo "❌ Failed to install dependencies for $FUNC_NAME"
+                exit 1
+              }
               rm -rf "$PACKAGE_DIR/boto3"* "$PACKAGE_DIR/botocore"* "$PACKAGE_DIR/s3transfer"* "$PACKAGE_DIR/jmespath"*
             fi
             
             echo "📄 Copying Python files..."
-            cp *.py "$PACKAGE_DIR/"
+            cp *.py "$PACKAGE_DIR/" || {
+              echo "❌ Failed to copy Python files for $FUNC_NAME"
+              exit 1
+            }
             
             cd "$PACKAGE_DIR"
-            zip -r -q "/tmp/${FUNC_NAME}.zip" .
+            zip -r -q "/tmp/${FUNC_NAME}.zip" . || {
+              echo "❌ Failed to create zip for $FUNC_NAME"
+              exit 1
+            }
             
-            echo "🚀 Updating Lambda function..."
+            echo "🚀 Updating Lambda function: $FUNC_NAME"
             aws lambda update-function-code \
               --function-name "$FUNC_NAME" \
               --zip-file "fileb:///tmp/${FUNC_NAME}.zip" \
-              --region us-east-2 \
-              --output json > /tmp/lambda_response.json
+              --region us-east-2 2>&1 | tee /tmp/lambda_response.txt
             
-            if [ $? -eq 0 ]; then
+            if [ ${PIPESTATUS[0]} -eq 0 ]; then
               echo "✅ Successfully deployed $FUNC_NAME"
             else
               echo "❌ Failed to deploy $FUNC_NAME"
-              cat /tmp/lambda_response.json
+              echo "Error details:"
+              cat /tmp/lambda_response.txt
               exit 1
             fi
             
