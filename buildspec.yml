@@ -5,48 +5,16 @@ phases:
     runtime-versions:
       python: 3.9
     commands:
-      - echo "Installing dependencies..."
       - pip install --upgrade pip
   
   build:
     commands:
-      - echo "Starting Lambda deployment process..."
       - |
-        # Detect branch from CodePipeline source
-        cd $CODEBUILD_SRC_DIR
-        BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        echo "Detected branch: $BRANCH"
+        echo "Starting Lambda deployment..."
         
-        # Determine deployment target based on environment variable
-        if [ "$DEPLOY_ENV" = "production" ]; then
-          SUFFIX=""
-          echo "========================================="
-          echo "Deploying to PRODUCTION functions"
-          echo "========================================="
-        elif [ "$DEPLOY_ENV" = "dev" ]; then
-          SUFFIX="_dev"
-          echo "========================================="
-          echo "Deploying to DEV functions"
-          echo "========================================="
-        else
-          echo "DEPLOY_ENV not set. Exiting."
-          exit 1
-        fi
-        
-        # Deploy each function
+        # Deploy ALL functions in the repository
         for dir in functions/*/; do
           FUNC_NAME=$(basename "$dir")
-          
-          # Skip if function doesn't match the branch pattern
-          if [ "$SUFFIX" = "" ] && [[ "$FUNC_NAME" == *"_dev" ]]; then
-            echo "→ Skipping $FUNC_NAME (dev function)"
-            continue
-          fi
-          if [ "$SUFFIX" = "_dev" ] && [[ "$FUNC_NAME" != *"_dev" ]]; then
-            echo "→ Skipping $FUNC_NAME (prod function)"
-            continue
-          fi
-          
           PY_FILE="functions/${FUNC_NAME}/${FUNC_NAME}.py"
           
           if [ -f "$PY_FILE" ]; then
@@ -55,37 +23,21 @@ phases:
             echo "📦 Deploying: $FUNC_NAME"
             echo "========================================="
             
-            # Create a temporary directory for packaging
             PACKAGE_DIR=$(mktemp -d)
-            
             cd "functions/${FUNC_NAME}"
             
-            # Check if requirements.txt exists
             if [ -f "requirements.txt" ]; then
-              echo "📚 Installing dependencies from requirements.txt..."
+              echo "📚 Installing dependencies..."
               pip install -r requirements.txt -t "$PACKAGE_DIR" --quiet
-              
-              # Remove boto3 and botocore if they were installed (Lambda provides these)
-              echo "🧹 Removing boto3/botocore (provided by Lambda runtime)..."
-              rm -rf "$PACKAGE_DIR/boto3" "$PACKAGE_DIR/botocore" "$PACKAGE_DIR/boto3-"* "$PACKAGE_DIR/botocore-"* "$PACKAGE_DIR/s3transfer"* "$PACKAGE_DIR/jmespath"*
-            else
-              echo "📝 No dependencies (requirements.txt not found)"
+              rm -rf "$PACKAGE_DIR/boto3"* "$PACKAGE_DIR/botocore"* "$PACKAGE_DIR/s3transfer"* "$PACKAGE_DIR/jmespath"*
             fi
             
-            # Copy all Python files to package directory
             echo "📄 Copying Python files..."
             cp *.py "$PACKAGE_DIR/"
             
-            # Create deployment package
-            echo "📦 Creating deployment package..."
             cd "$PACKAGE_DIR"
             zip -r -q "/tmp/${FUNC_NAME}.zip" .
             
-            # Get zip file size
-            ZIP_SIZE=$(du -h "/tmp/${FUNC_NAME}.zip" | cut -f1)
-            echo "📊 Package size: $ZIP_SIZE"
-            
-            # Update Lambda function code
             echo "🚀 Updating Lambda function..."
             aws lambda update-function-code \
               --function-name "$FUNC_NAME" \
@@ -101,11 +53,8 @@ phases:
               exit 1
             fi
             
-            # Cleanup
             rm -rf "$PACKAGE_DIR"
-            rm -f "/tmp/${FUNC_NAME}.zip"
             cd "$CODEBUILD_SRC_DIR"
-            
           else
             echo "⚠️  Warning: $PY_FILE not found, skipping $FUNC_NAME"
           fi
