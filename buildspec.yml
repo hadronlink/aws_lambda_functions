@@ -12,9 +12,10 @@ phases:
     commands:
       - echo "Starting Lambda deployment process..."
       - |
-        # Get the branch name
-        BRANCH=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}
-        echo "Branch: $BRANCH"
+        # Detect branch from CodePipeline source
+        cd $CODEBUILD_SRC_DIR
+        BRANCH=$(git rev-parse --abbrev-ref HEAD)
+        echo "Detected branch: $BRANCH"
         
         # Determine deployment target based on branch
         if [ "$BRANCH" = "main" ]; then
@@ -103,7 +104,7 @@ phases:
             # Cleanup
             rm -rf "$PACKAGE_DIR"
             rm -f "/tmp/${FUNC_NAME}.zip"
-            cd - > /dev/null
+            cd "$CODEBUILD_SRC_DIR"
             
           else
             echo "⚠️  Warning: $PY_FILE not found, skipping $FUNC_NAME"
