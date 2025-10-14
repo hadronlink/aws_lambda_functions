@@ -703,3 +703,5 @@ def decimal_default(obj):
     if isinstance(obj, Decimal):
         return float(obj)
     raise TypeError
+#   C I / C D   t e s t   -   1 0 / 1 4 / 2 0 2 5   1 4 : 4 0 : 2 4  
+ 
