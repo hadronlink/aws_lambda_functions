@@ -17,20 +17,20 @@ phases:
         BRANCH=$(git rev-parse --abbrev-ref HEAD)
         echo "Detected branch: $BRANCH"
         
-        # Determine deployment target based on branch
-        if [ "$BRANCH" = "main" ]; then
+        # Determine deployment target based on environment variable
+        if [ "$DEPLOY_ENV" = "production" ]; then
           SUFFIX=""
           echo "========================================="
           echo "Deploying to PRODUCTION functions"
           echo "========================================="
-        elif [ "$BRANCH" = "dev" ]; then
+        elif [ "$DEPLOY_ENV" = "dev" ]; then
           SUFFIX="_dev"
           echo "========================================="
           echo "Deploying to DEV functions"
           echo "========================================="
         else
-          echo "Branch $BRANCH is not configured for deployment. Exiting."
-          exit 0
+          echo "DEPLOY_ENV not set. Exiting."
+          exit 1
         fi
         
         # Deploy each function
