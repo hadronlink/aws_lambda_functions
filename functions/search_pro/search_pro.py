@@ -578,7 +578,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     "type": "most_fields",
                     "tie_breaker": 0.0,
                     "fields": [
-                        "doc.trades_and_skills.english",  # Now with proper stemming!
+                        "doc.trades_and_skills", 
                         "doc.profile_experience.en",
                         "doc.projects_themes_list.en", 
                         "doc.portfolio.category_name_en",
@@ -593,7 +593,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     "type": "most_fields", 
                     "tie_breaker": 0.0,
                     "fields": [
-                        "doc.trades_and_skills.spanish",
+                        "doc.trades_and_skills",
                         "doc.profile_experience.es",
                         "doc.projects_themes_list.es",
                         "doc.portfolio.category_name_es", 
@@ -608,7 +608,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     "type": "most_fields",
                     "tie_breaker": 0.0,
                     "fields": [
-                        "doc.trades_and_skills.french",
+                        "doc.trades_and_skills",
                         "doc.profile_experience.fr",
                         "doc.projects_themes_list.fr",
                         "doc.portfolio.category_name_fr",
@@ -623,7 +623,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     "type": "most_fields",
                     "tie_breaker": 0.0,
                     "fields": [
-                        "doc.trades_and_skills.portuguese",
+                        "doc.trades_and_skills",
                         "doc.profile_experience.pt",
                         "doc.projects_themes_list.pt",
                         "doc.portfolio.category_name_pt",
