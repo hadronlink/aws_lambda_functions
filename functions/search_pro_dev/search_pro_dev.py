@@ -927,6 +927,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
             'pro_rate': professional.get('pro_rate', 0.0),
             'reviews_received': professional.get('reviews_received', 0),
             'profile_experience': professional.get('profile_experience', ''),
+            'open_to_work': professional.get('open_to_work'),
             'currently_insured': currently_insured,  # ALWAYS included
             'currently_certified': currently_certified,  # ALWAYS included
             'profile_image_complete_path': professional.get('profile_image_complete_path', ''),
