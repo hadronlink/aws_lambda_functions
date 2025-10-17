@@ -676,11 +676,19 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
             }
         ]
 
-    # Add open_to_work filter only if requested
+    # Handle only_open_to_work logic
     if only_open_to_work:
+        # If True, filter to only include professionals open to work
         opensearch_payload["query"]["bool"]["must"].append({
             "term": {
                 "doc.open_to_work": True
+            }
+        })
+    else:
+        # If False, sort to show open_to_work=True first, then False
+        opensearch_payload["sort"].insert(0, {
+            "doc.open_to_work": {
+                "order": "desc"  # true comes before false
             }
         })
     
