@@ -82,7 +82,7 @@ def handle_get(payload):
     try:
         if 'perk_id' in payload:
             return get_one(payload['perk_id'])
-        elif 'is_bigquery' in payload and payload['is_bigquery'] == True:
+        elif 'is_bigquery' in payload and payload['is_bigquery'] == '1':
             return get_all_from_bigquery()
         else:
             return get_all(payload)
