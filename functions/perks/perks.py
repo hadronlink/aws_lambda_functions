@@ -82,11 +82,10 @@ def handle_get(payload):
     try:
         if 'perk_id' in payload:
             return get_one(payload['perk_id'])
+        elif 'is_bigquery' in payload and payload['is_bigquery'] == True:
+            return get_all_from_bigquery()
         else:
-            if 'is_bigquery' in payload and payload['is_bigquery'] == True:
-                return get_all_from_bigquery()
-            else:
-                return get_all(payload)
+            return get_all(payload)
     except Exception as e:
         print(f'[ERROR] Exception in handle_get: {str(e)}')
         return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
