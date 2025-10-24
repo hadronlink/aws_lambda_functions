@@ -82,7 +82,11 @@ def handle_get(payload):
     try:
         if 'perk_id' in payload:
             return get_one(payload['perk_id'])
-        return get_all(payload)
+        else:
+            if 'is_bigquery' in payload and payload['is_bigquery'] == True:
+                return get_all_from_bigquery()
+            else:
+                return get_all(payload)
     except Exception as e:
         print(f'[ERROR] Exception in handle_get: {str(e)}')
         return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
@@ -97,10 +101,45 @@ def get_one(perk_id):
     except Exception as e:
         return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
 
+def get_all_from_bigquery():
+    """
+    Retrieves ALL perks without any filtering (for BigQuery export/data analysis).
+    Returns ALL perks including deleted ones.
+    """
+    print('[DEBUG INFO] Executing get_all_from_bigquery function...')
+
+    try:
+        response = table.scan()
+        items = response.get('Items', [])
+        print(f"[DEBUG] Retrieved {len(items)} total perks")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'perks': items,
+                'count': len(items)
+            }, default=dynamo_json_serializer)
+        }
+
+    except ClientError as e:
+        print(f"[ERROR] DynamoDB error: {e.response['Error']['Message']}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f"Database error: {e.response['Error']['Message']}"})
+        }
+    except Exception as e:
+        import traceback
+        print('[ERROR] Unexpected exception in get_all_from_bigquery:')
+        print(traceback.format_exc())
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': 'Internal server error'})
+        }
+
 def get_all(payload):
     """
     Retrieves and filters active perks based on date, user type, and geohash.
-    
+
     Optimizations:
     1. Simplified filter expression building
     2. Early validation of required parameters
