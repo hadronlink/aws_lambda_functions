@@ -181,39 +181,35 @@ def get_all(payload):
         
         print(f"[DEBUG] Filter expression built for pro={user_is_pro}")
         
-        # Handle pagination
-        exclusive_start_key = None
-        lek_param = payload.get('last_evaluated_key')
-        if lek_param:
-            try:
-                exclusive_start_key = json.loads(lek_param)
-                if not exclusive_start_key:
-                    exclusive_start_key = None
-            except json.JSONDecodeError:
-                print('[WARN] Invalid last_evaluated_key format')
-                exclusive_start_key = None
-        
         # Build query parameters
         query_params = {
             'IndexName': 'soft_delete-index',
             'KeyConditionExpression': Key('soft_delete').eq('False'),
-            'FilterExpression': filter_expr,
-            'Limit': PAGE_SIZE
+            'FilterExpression': filter_expr
         }
-        
-        if exclusive_start_key:
-            query_params['ExclusiveStartKey'] = exclusive_start_key
         
         # Execute query
         print('[DEBUG] Executing DynamoDB query...')
-        response = table.query(**query_params)
-        items = response.get('Items', [])
+        
+        items = []
+        last_evaluated_key = None
+        
+        while True:
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = table.query(**query_params)
+            items.extend(response.get('Items', []))
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+
         print(f"[DEBUG] Retrieved {len(items)} items from DynamoDB")
         
         # Debug: Print first item if available
         if items:
             print(f"[DEBUG] First item dates - start: {items[0].get('start_date')}, end: {items[0].get('end_date')}")
-            print(f"[DEBUG] First item geohash_reference: {items[0].get('geohash_reference')}, precision: {items[0].get('geohash_precision')}")
         
         # Apply geohash filtering first (coarse filter)
         geohash_filtered = [
