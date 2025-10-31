@@ -415,6 +415,3 @@ def matches_distance_filter(perk, user_lat, user_lon):
     except (ValueError, TypeError) as e:
         print(f"[DEBUG] Distance calculation error: {e}")
         return False
-
-
-
