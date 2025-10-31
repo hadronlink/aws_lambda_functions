@@ -67,7 +67,8 @@ def create_item(payload):
             'external_url_clicks_count': 0,
             'visualizations_events': [],
             'main_card_clicks_events': [],
-            'external_url_clicks_events': [] 
+            'external_url_clicks_events': [],
+            'type': payload['type']
         }
         table.put_item(Item=item)
         return {'statusCode': 201, 'body': json.dumps({'message': 'Perk created successfully'})}
