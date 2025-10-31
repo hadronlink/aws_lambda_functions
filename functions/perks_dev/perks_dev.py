@@ -228,6 +228,10 @@ def get_all(payload):
             if matches_distance_filter(perk, user_lat, user_lon)
         ]
         print(f"[DEBUG] {len(matching_perks)} perks within distance limit")
+
+        # Sort the matching perks by the 'type' field in ascending order
+        matching_perks.sort(key=lambda x: x.get('type', ''))
+        print(f"[DEBUG] Perks sorted by type.")
         
         # Prepare pagination token
         last_key = response.get('LastEvaluatedKey')
@@ -415,6 +419,3 @@ def matches_distance_filter(perk, user_lat, user_lon):
     except (ValueError, TypeError) as e:
         print(f"[DEBUG] Distance calculation error: {e}")
         return False
-
-
-
