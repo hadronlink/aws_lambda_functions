@@ -181,33 +181,29 @@ def get_all(payload):
         
         print(f"[DEBUG] Filter expression built for pro={user_is_pro}")
         
-        # Handle pagination
-        exclusive_start_key = None
-        lek_param = payload.get('last_evaluated_key')
-        if lek_param:
-            try:
-                exclusive_start_key = json.loads(lek_param)
-                if not exclusive_start_key:
-                    exclusive_start_key = None
-            except json.JSONDecodeError:
-                print('[WARN] Invalid last_evaluated_key format')
-                exclusive_start_key = None
-        
         # Build query parameters
         query_params = {
             'IndexName': 'soft_delete-index',
             'KeyConditionExpression': Key('soft_delete').eq('False'),
-            'FilterExpression': filter_expr,
-            'Limit': PAGE_SIZE
+            'FilterExpression': filter_expr
         }
         
-        if exclusive_start_key:
-            query_params['ExclusiveStartKey'] = exclusive_start_key
+        # Execute query and fetch all results (no pagination)
+        print('[DEBUG] Executing DynamoDB query to fetch all items...')
+        items = []
+        last_evaluated_key = None
         
-        # Execute query
-        print('[DEBUG] Executing DynamoDB query...')
-        response = table.query(**query_params)
-        items = response.get('Items', [])
+        while True:
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = table.query(**query_params)
+            items.extend(response.get('Items', []))
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+
         print(f"[DEBUG] Retrieved {len(items)} items from DynamoDB")
         
         # Debug: Print first item if available
@@ -229,19 +225,27 @@ def get_all(payload):
         ]
         print(f"[DEBUG] {len(matching_perks)} perks within distance limit")
         
-        # Prepare pagination token
-        last_key = response.get('LastEvaluatedKey')
-        next_token = json.dumps(last_key, default=dynamo_json_serializer) if last_key else None
-        
-        # Override has_more: if we got fewer results than page size, there's no more
-        has_more = bool(next_token) and len(matching_perks) == PAGE_SIZE
-        
+        # Group perks by type
+        perks_by_type = {
+            'perks_A': [],
+            'perks_B': [],
+            'perks_C': []
+        }
+        for perk in matching_perks:
+            perk_type = perk.get('type')
+            if perk_type == 'A':
+                perks_by_type['perks_A'].append(perk)
+            elif perk_type == 'B':
+                perks_by_type['perks_B'].append(perk)
+            elif perk_type == 'C':
+                perks_by_type['perks_C'].append(perk)
+
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'perks': matching_perks,
-                'next_page_token': next_token,
-                'has_more': has_more
+                **perks_by_type,
+                'next_page_token': None,
+                'has_more': False
             }, default=dynamo_json_serializer)
         }
         

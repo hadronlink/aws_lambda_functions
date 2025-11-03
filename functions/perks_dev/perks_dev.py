@@ -225,23 +225,27 @@ def get_all(payload):
         ]
         print(f"[DEBUG] {len(matching_perks)} perks within distance limit")
 
-        # Sort the matching perks by the 'type' field in ascending order
-        matching_perks.sort(key=lambda x: x.get('type', ''))
-        print(f"[DEBUG] Perks sorted by type.")
-        
-        # Prepare pagination token
-        last_key = response.get('LastEvaluatedKey')
-        next_token = json.dumps(last_key, default=dynamo_json_serializer) if last_key else None
-        
-        # Override has_more: if we got fewer results than page size, there's no more
-        has_more = bool(next_token) and len(matching_perks) == PAGE_SIZE
+        # Group perks by type
+        perks_by_type = {
+            'perks_A': [],
+            'perks_B': [],
+            'perks_C': []
+        }
+        for perk in matching_perks:
+            perk_type = perk.get('type')
+            if perk_type == 'A':
+                perks_by_type['perks_A'].append(perk)
+            elif perk_type == 'B':
+                perks_by_type['perks_B'].append(perk)
+            elif perk_type == 'C':
+                perks_by_type['perks_C'].append(perk)
         
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'perks': matching_perks,
-                'next_page_token': next_token,
-                'has_more': has_more
+                **perks_by_type,
+                'next_page_token': None,
+                'has_more': False
             }, default=dynamo_json_serializer)
         }
         
