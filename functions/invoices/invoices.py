@@ -35,14 +35,14 @@ from reportlab.graphics.shapes import Drawing, Circle
 
 # Initialize DynamoDB resources
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('invoices_dev')
-table_services_requests = dynamodb.Table('services_requests_dev')
-table_chats = dynamodb.Table('chats_dev')
-table_roles = dynamodb.Table('roles_dev')
+table = dynamodb.Table('invoices')
+table_services_requests = dynamodb.Table('services_requests')
+table_chats = dynamodb.Table('chats')
+table_roles = dynamodb.Table('roles')
 
 # Initialize Google Storage client for PDF storage
 creds_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_JSON'])
-creds = service_account.Credentials.from_service_account_info(json.loads(creds_json))
+creds = service_account.Credentials.from_service_account_info(json.loads(creds_json)) # type: ignore
 client = storage.Client(credentials=creds)
 
 # Constants
@@ -126,7 +126,7 @@ PLACEHOLDERS = {
 
 # OpenSearch configuration for profiles
 OPENSEARCH_ENDPOINT = 'https://search-connecus-home-xter5mxymdzivmnio2iuvwgg4a.us-east-2.es.amazonaws.com'
-OPENSEARCH_INDEX = 'pros_from_xano_dev'
+OPENSEARCH_INDEX = 'pros_from_xano_live'
 AWS_REGION = 'us-east-2'
 SECRETS_MANAGER_SECRET_NAME = 'opensearch-credentials'
 
