@@ -1,0 +1,2 @@
+# google-cloud-storage is provided by Lambda layer
+# All other dependencies (boto3, google-auth, etc.) are included in the Lambda runtime or layer
