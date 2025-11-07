@@ -54,7 +54,10 @@ def lambda_handler(event, context):
 
 def create_task_communication(payload):
     """
-    Creates a new task communication record
+    Creates a new task communication record or updates existing if supervisor was previously assigned
+
+    If a supervisor is being reassigned (supervisor_xano_profile_contractor_id exists in another
+    task_communication for the same task), the existing record will be updated instead of creating a new one.
 
     Required fields:
     - xano_task_id
@@ -82,18 +85,89 @@ def create_task_communication(payload):
                 'body': json.dumps({'error': 'task_communication_id must start with "TASKCOMM#"'})
             }
 
+        xano_task_id = payload['xano_task_id']
+        supervisor_id = payload.get('supervisor_xano_profile_contractor_id', '')
+
+        # If a supervisor is being assigned, check if they were previously assigned to this task
+        if supervisor_id:
+            print(f'[DEBUG INFO] Checking for existing task_communication for supervisor: {supervisor_id}')
+
+            # Query all task_communications for this task
+            response = tasks_communications_table.query(
+                KeyConditionExpression=Key('xano_task_id').eq(xano_task_id)
+            )
+
+            existing_items = response.get('Items', [])
+
+            # Handle pagination if needed
+            while 'LastEvaluatedKey' in response:
+                response = tasks_communications_table.query(
+                    KeyConditionExpression=Key('xano_task_id').eq(xano_task_id),
+                    ExclusiveStartKey=response['LastEvaluatedKey']
+                )
+                existing_items.extend(response.get('Items', []))
+
+            # Check if supervisor already has a task_communication for this task
+            existing_supervisor_record = None
+            for item in existing_items:
+                if item.get('supervisor_xano_profile_contractor_id') == supervisor_id:
+                    existing_supervisor_record = item
+                    print(f'[DEBUG INFO] Found existing task_communication for supervisor: {item["task_communication_id"]}')
+                    break
+
+            # If supervisor was previously assigned, update the existing record
+            if existing_supervisor_record:
+                current_time = datetime.datetime.utcnow().isoformat()
+                existing_task_communication_id = existing_supervisor_record['task_communication_id']
+
+                print(f'[DEBUG INFO] Updating existing task_communication: {existing_task_communication_id}')
+
+                tasks_communications_table.update_item(
+                    Key={
+                        'xano_task_id': xano_task_id,
+                        'task_communication_id': existing_task_communication_id
+                    },
+                    UpdateExpression='''SET
+                        supervisor_xano_profile_contractor_id = :supervisor_id,
+                        supervisor_name = :supervisor_name,
+                        supervisor_access_is_active = :active,
+                        supervisor_acceptance_date = :acceptance_date,
+                        supervisor_end_date = :end_date,
+                        updated_at = :updated_at''',
+                    ExpressionAttributeValues={
+                        ':supervisor_id': supervisor_id,
+                        ':supervisor_name': payload.get('supervisor_name', ''),
+                        ':active': True,
+                        ':acceptance_date': current_time,
+                        ':end_date': '',
+                        ':updated_at': current_time
+                    },
+                    ReturnValues='NONE'
+                )
+
+                print(f"[DEBUG INFO] Task communication updated for reassigned supervisor: {existing_task_communication_id}")
+
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'message': 'Task communication updated for reassigned supervisor',
+                        'task_communication_id': existing_task_communication_id
+                    })
+                }
+
+        # If no existing supervisor record found, create a new task_communication
         current_time = datetime.datetime.utcnow().isoformat()
 
         # Build the item
         item = {
-            'xano_task_id': payload['xano_task_id'],
+            'xano_task_id': xano_task_id,
             'task_communication_id': task_communication_id,
             'owner_xano_profile_contractor_id': payload['owner_xano_profile_contractor_id'],
             'owner_name': payload['owner_name'],
-            'supervisor_xano_profile_contractor_id': payload.get('supervisor_xano_profile_contractor_id', ''),
+            'supervisor_xano_profile_contractor_id': supervisor_id,
             'supervisor_name': payload.get('supervisor_name', ''),
             'supervisor_access_is_active': payload.get('supervisor_access_is_active', False),
-            'supervisor_acceptance_date': payload.get('supervisor_acceptance_date', ''),
+            'supervisor_acceptance_date': current_time,
             'supervisor_end_date': payload.get('supervisor_end_date', ''),
             'messages': [],
             'new_messages_to_owner': False,
