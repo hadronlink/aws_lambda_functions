@@ -7,6 +7,7 @@ from google.cloud import storage
 # Initialize DynamoDB resource
 dynamodb = boto3.resource('dynamodb')
 tasks_communications_table = dynamodb.Table('tasks_communications_dev')
+tasks_documentation_table = dynamodb.Table('tasks_documentation_dev')
 
 # Google Cloud Storage configuration
 GCS_BUCKET_NAME = 'hadronlink_pictures'
@@ -59,7 +60,12 @@ def lambda_handler(event, context):
 
     try:
         if operation == 'POST':
-            return create_task_communication(payload)
+            if payload.get('is_task_documentation'):
+                return create_task_documentation(payload)
+            elif payload.get('duplicate_documentation') and payload.get('original_task_id'):
+                return duplicate_task_documentation(payload)
+            else:
+                return create_task_communication(payload)
         elif operation == 'GET':
             return handle_get(payload)
         elif operation == 'PUT':
@@ -231,6 +237,166 @@ def create_task_communication(payload):
         }
 
 
+
+def duplicate_task_documentation(payload):
+    """
+    Duplicates a task documentation from an original task to a new task, bringing over all images.
+
+    Required fields:
+    - xano_task_id
+    - project_owner_xano_profile_contractor_id
+    - project_owner_name
+    - task_owner_xano_profile_contractor_id
+    - task_owner_name
+    - original_task_id
+    """
+    print('[DEBUG INFO] Initializing duplicate_task_documentation...')
+
+    try:
+        # Validate required fields
+        required_fields = ['xano_task_id', 'task_communication_id', 'project_owner_xano_profile_contractor_id', 'project_owner_name', 
+                           'task_owner_xano_profile_contractor_id', 'task_owner_name', 'original_task_id']
+        for field in required_fields:
+            if field not in payload:
+                print({'error': f'Missing required field: {field}'})
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': f'Missing required field: {field}'})
+                }
+        
+        # Build the item
+        item = {
+            'xano_task_id': payload['xano_task_id'],
+            'task_owner_xano_profile_contractor_id': payload['task_owner_xano_profile_contractor_id'],
+            'task_owner_name': payload['task_owner_name'],
+            'project_owner_xano_profile_contractor_id': payload['project_owner_xano_profile_contractor_id'],
+            'project_owner_name': payload.get('project_owner_name', ''),
+            'messages': [],
+            'new_messages_to_task_owner': False,
+            'new_messages_to_project_owner': False,
+            'created_at': current_time,
+            'updated_at': current_time
+        }
+
+        # Fetch the original task documentation
+        original_task_id = payload['original_task_id']
+        response = tasks_documentation_table.get_item(
+            Key={
+                'xano_task_id': original_task_id
+            }
+        )
+
+        if 'Item' not in response:
+            print({'[DEBUG INFO] error: Original task documentation not found'})
+        else:
+            original_item = response['Item']
+            original_messages = original_item.get('messages', [])
+            print(f"[DEBUG INFO] Found original task documentation with {len(original_messages)} messages")
+
+            duplicate_messages = []
+
+            # Only duplicate messages that have file_complete_google_name (images)
+            for message in original_messages:
+                if 'file_complete_google_name' in message and message['file_complete_google_name']:
+                    duplicate_messages.append(message)
+            
+            item['messages'] = duplicate_messages
+
+        # Create a new task documentation
+        current_time = datetime.datetime.utcnow().isoformat()
+
+        # Create the item in DynamoDB with condition to prevent overwrites
+        tasks_documentation_table.put_item(
+            Item=item,
+            ConditionExpression='attribute_not_exists(xano_task_id)'
+        )
+
+        print(f"[DEBUG INFO] Task documentation created successfully.")
+
+        return {
+            'statusCode': 201,
+            'body': json.dumps({
+                'message': 'Task documentation created successfully'
+            })
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to create task documentation: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
+def create_task_documentation(payload):
+    """
+    Creates a new task documentation record.
+
+    Each task may have multiple task_communications, but only one task_documentation, so it's not necessary to have a task_documentation_id.
+
+    Required fields:
+    - xano_task_id
+    - project_owner_xano_profile_contractor_id
+    - project_owner_name
+    - task_owner_xano_profile_contractor_id
+    - task_owner_name
+    """
+    print('[DEBUG INFO] Initializing create_task_documentation...')
+
+    try:
+        # Validate required fields
+        required_fields = ['xano_task_id', 'task_communication_id', 'project_owner_xano_profile_contractor_id', 'project_owner_name', 'task_owner_xano_profile_contractor_id', 'task_owner_name']
+        for field in required_fields:
+            if field not in payload:
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': f'Missing required field: {field}'})
+                }
+
+        # create a new task_documentation
+        current_time = datetime.datetime.utcnow().isoformat()
+
+        # Build the item
+        item = {
+            'xano_task_id': payload['xano_task_id'],
+            'task_owner_xano_profile_contractor_id': payload['task_owner_xano_profile_contractor_id'],
+            'task_owner_name': payload['task_owner_name'],
+            'project_owner_xano_profile_contractor_id': payload['project_owner_xano_profile_contractor_id'],
+            'project_owner_name': payload.get('project_owner_name', ''),
+            'messages': [],
+            'new_messages_to_task_owner': False,
+            'new_messages_to_project_owner': False,
+            'created_at': current_time,
+            'updated_at': current_time
+        }
+
+        # Create the item in DynamoDB with condition to prevent overwrites
+        tasks_documentation_table.put_item(
+            Item=item,
+            ConditionExpression='attribute_not_exists(xano_task_id)'
+        )
+
+        print(f"[DEBUG INFO] Task documentation created successfully.")
+
+        return {
+            'statusCode': 201,
+            'body': json.dumps({
+                'message': 'Task documentation created successfully'
+            })
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to create task documentation: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
 def handle_get(payload):
     """
     Routes GET requests to appropriate functions
@@ -241,6 +407,10 @@ def handle_get(payload):
         # Get specific task communication
         if 'xano_task_id' in payload and 'task_communication_id' in payload:
             return get_task_communication(payload)
+
+        # Get task communication by supervisor and task
+        elif 'xano_task_id' in payload and 'supervisor_xano_profile_contractor_id' in payload:
+            return get_task_communication_by_supervisor_and_task(payload)
 
         # Get all task communications for a task
         elif 'xano_task_id' in payload:
@@ -390,6 +560,88 @@ def get_task_communications_by_task(payload):
         }
 
 
+def get_task_communication_by_supervisor_and_task(payload):
+    """
+    Gets the task communication for a specific supervisor and task
+    Queries by xano_task_id and filters by supervisor_xano_profile_contractor_id
+    Automatically marks messages as read for the supervisor
+
+    Required parameters:
+    - xano_task_id
+    - supervisor_xano_profile_contractor_id
+    """
+    print('[DEBUG INFO] Getting task communication by supervisor and task...')
+
+    try:
+        xano_task_id = payload['xano_task_id']
+        supervisor_id = payload['supervisor_xano_profile_contractor_id']
+
+        # Query all task communications for this task
+        response = tasks_communications_table.query(
+            KeyConditionExpression=Key('xano_task_id').eq(xano_task_id)
+        )
+
+        items = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = tasks_communications_table.query(
+                KeyConditionExpression=Key('xano_task_id').eq(xano_task_id),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        # Find the task communication for this supervisor
+        task_communication = None
+        for item in items:
+            if item.get('supervisor_xano_profile_contractor_id') == supervisor_id:
+                task_communication = item
+                break
+
+        if not task_communication:
+            return {
+                'statusCode': 404,
+                'body': json.dumps({'error': f'No task communication found for supervisor {supervisor_id} on task {xano_task_id}'})
+            }
+
+        task_communication_id = task_communication['task_communication_id']
+
+        # Sort messages and add file URLs
+        if task_communication.get('messages'):
+            task_communication['messages'].sort(key=lambda msg: msg.get('timestamp', ''), reverse=True)
+            task_communication['messages'] = add_file_urls_to_messages(task_communication['messages'])
+
+        # Mark messages as read for supervisor
+        current_time = datetime.datetime.utcnow().isoformat()
+        tasks_communications_table.update_item(
+            Key={
+                'xano_task_id': xano_task_id,
+                'task_communication_id': task_communication_id
+            },
+            UpdateExpression='SET new_messages_to_supervisor = :false, updated_at = :updated_at',
+            ExpressionAttributeValues={
+                ':false': False,
+                ':updated_at': current_time
+            },
+            ReturnValues='NONE'
+        )
+        print('[DEBUG INFO] Marked messages as read for supervisor')
+
+        print(f"[DEBUG INFO] Found task communication for supervisor {supervisor_id} on task {xano_task_id}")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(task_communication, default=str)
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to get task communication by supervisor and task: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
 def get_task_communications_by_supervisor(payload):
     """
     Gets all task communications for a supervisor where access is active
@@ -453,10 +705,15 @@ def update_task_communication(payload):
     - Updating supervisor information
     - Updating supervisor access status
     - Removing supervisor by task_id and supervisor_id (when remove_this_supervisor=true)
+    - Marking messages as read (when mark_as_read=true, requires authenticated_contractor_profile_id)
     """
     print('[DEBUG INFO] Initializing update_task_communication...')
 
     try:
+        # Handle mark as read requests
+        if payload.get('mark_as_read') is True:
+            return mark_messages_as_read(payload)
+
         # Handle supervisor removal (only requires xano_task_id and supervisor_id)
         if payload.get('remove_this_supervisor') is True:
             if 'xano_task_id' not in payload or 'supervisor_xano_profile_contractor_id' not in payload:
@@ -542,7 +799,7 @@ def update_task_communication(payload):
             return delete_messages(xano_task_id, task_communication_id, payload['messages_ids_to_delete'])
 
         # Handle adding new messages
-        if 'messages' in payload and isinstance(payload['messages'], dict) and 'add' in payload['messages']:
+        if 'messages' in payload and isinstance(payload['messages'], dict):
             return add_messages(xano_task_id, task_communication_id, payload)
 
         # Handle general field updates
@@ -588,6 +845,132 @@ def update_task_communication(payload):
 
     except Exception as e:
         print(f"[ERROR] Failed to update task communication: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
+def mark_messages_as_read(payload):
+    """
+    Marks messages as read for task owner or supervisor
+    Automatically detects whether the authenticated user is the supervisor or task owner
+
+    Required fields:
+    - xano_task_id
+    - task_communication_id
+    - authenticated_contractor_profile_id
+    - mark_as_read (set to true)
+
+    Usage:
+    PUT request with payload:
+    {
+        "xano_task_id": "123",
+        "task_communication_id": "TASKCOMM#...",
+        "authenticated_contractor_profile_id": "456",
+        "mark_as_read": true
+    }
+    """
+    print('[DEBUG INFO] Marking messages as read...')
+
+    try:
+        # Validate required fields
+        if 'xano_task_id' not in payload or 'task_communication_id' not in payload:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Missing required fields: xano_task_id and task_communication_id'})
+            }
+
+        if 'authenticated_contractor_profile_id' not in payload:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Missing required field: authenticated_contractor_profile_id'})
+            }
+
+        if not payload.get('mark_as_read'):
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'mark_as_read must be set to true'})
+            }
+
+        xano_task_id = payload['xano_task_id']
+        task_communication_id = payload['task_communication_id']
+        authenticated_id = payload['authenticated_contractor_profile_id']
+        current_time = datetime.datetime.utcnow().isoformat()
+
+        # Get the task communication to determine the user's role
+        response = tasks_communications_table.get_item(
+            Key={
+                'xano_task_id': xano_task_id,
+                'task_communication_id': task_communication_id
+            }
+        )
+
+        if 'Item' not in response:
+            return {
+                'statusCode': 404,
+                'body': json.dumps({'error': 'Task communication not found'})
+            }
+
+        item = response['Item']
+        task_owner_id = item.get('task_owner_xano_profile_contractor_id', '')
+        supervisor_id = item.get('supervisor_xano_profile_contractor_id', '')
+
+        # Determine user role and update appropriate field
+        if authenticated_id == supervisor_id:
+            tasks_communications_table.update_item(
+                Key={
+                    'xano_task_id': xano_task_id,
+                    'task_communication_id': task_communication_id
+                },
+                UpdateExpression='SET new_messages_to_supervisor = :false, updated_at = :updated_at',
+                ExpressionAttributeValues={
+                    ':false': False,
+                    ':updated_at': current_time
+                },
+                ReturnValues='NONE'
+            )
+            print('[DEBUG INFO] Marked messages as read for supervisor')
+            message = 'Messages marked as read for supervisor'
+            user_role = 'supervisor'
+
+        elif authenticated_id == task_owner_id:
+            tasks_communications_table.update_item(
+                Key={
+                    'xano_task_id': xano_task_id,
+                    'task_communication_id': task_communication_id
+                },
+                UpdateExpression='SET new_messages_to_task_owner = :false, updated_at = :updated_at',
+                ExpressionAttributeValues={
+                    ':false': False,
+                    ':updated_at': current_time
+                },
+                ReturnValues='NONE'
+            )
+            print('[DEBUG INFO] Marked messages as read for task_owner')
+            message = 'Messages marked as read for task_owner'
+            user_role = 'task_owner'
+
+        else:
+            return {
+                'statusCode': 403,
+                'body': json.dumps({'error': 'Authenticated user is neither the task owner nor the supervisor for this task communication'})
+            }
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': message,
+                'user_role': user_role,
+                'xano_task_id': xano_task_id,
+                'task_communication_id': task_communication_id
+            })
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to mark messages as read: {str(e)}")
         import traceback
         print(f"[ERROR] Full traceback: {traceback.format_exc()}")
         return {
@@ -739,7 +1122,7 @@ def add_messages(xano_task_id, task_communication_id, payload):
 
                 # Resolve sender information from messages object
                 if sender == 'task_owner':
-                    text_message['sender'] = 'owner'
+                    text_message['sender'] = 'task_owner'
                     text_message['sender_name'] = task_owner_name
                     sender_type = 'task_owner'
                     recipient_name = supervisor_name
@@ -780,7 +1163,7 @@ def add_messages(xano_task_id, task_communication_id, payload):
 
                         # Resolve sender information from messages object
                         if sender == 'task_owner':
-                            file_message['sender'] = 'owner'
+                            file_message['sender'] = 'task_owner'
                             file_message['sender_name'] = task_owner_name
                             sender_type = 'task_owner'
                             recipient_name = supervisor_name
@@ -867,8 +1250,8 @@ def add_messages(xano_task_id, task_communication_id, payload):
 
 def delete_messages(xano_task_id, task_communication_id, messages_ids_to_delete):
     """
-    Deletes messages from a task communication
-    Also deletes associated files from Google Cloud Storage if present
+    Deletes messages from a task communication by their message IDs
+    Note: File deletion from Google Cloud Storage is handled by Xano
     """
     print('[DEBUG INFO] Deleting messages from task communication...')
 
@@ -889,8 +1272,7 @@ def delete_messages(xano_task_id, task_communication_id, messages_ids_to_delete)
 
         messages = response['Item'].get('messages', [])
 
-        # Track files to delete and messages to keep
-        files_to_delete = []
+        # Filter messages to keep only those not in the deletion list
         new_messages = []
         deleted_count = 0
 
@@ -898,10 +1280,7 @@ def delete_messages(xano_task_id, task_communication_id, messages_ids_to_delete)
             message_id = msg.get('message_id')
             if message_id in messages_ids_to_delete:
                 deleted_count += 1
-                # Check if message has a file to delete
-                file_name = msg.get('file_complete_google_name', '')
-                if file_name:
-                    files_to_delete.append(file_name)
+                print(f'[DEBUG INFO] Deleting message: {message_id}')
             else:
                 new_messages.append(msg)
 
