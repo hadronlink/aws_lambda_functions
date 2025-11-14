@@ -580,9 +580,10 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     "fields": [
                         "doc.trades_and_skills",
                         "doc.profile_experience.en",
-                        "doc.projects_themes_list.en", 
+                        "doc.projects_themes_list.en",
                         "doc.portfolio.category_name_en",
-                        "doc.portfolio.category_description_en"
+                        "doc.portfolio.category_description_en",
+                        "doc.unions"
                     ]
                 }
             },
@@ -590,14 +591,15 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                 # Spanish fields with Spanish analyzer
                 "multi_match": {
                     "query": search_query,
-                    "type": "most_fields", 
+                    "type": "most_fields",
                     "tie_breaker": 0.0,
                     "fields": [
                         "doc.trades_and_skills",
                         "doc.profile_experience.es",
                         "doc.projects_themes_list.es",
-                        "doc.portfolio.category_name_es", 
-                        "doc.portfolio.category_description_es"
+                        "doc.portfolio.category_name_es",
+                        "doc.portfolio.category_description_es",
+                        "doc.unions"
                     ]
                 }
             },
@@ -612,12 +614,13 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                         "doc.profile_experience.fr",
                         "doc.projects_themes_list.fr",
                         "doc.portfolio.category_name_fr",
-                        "doc.portfolio.category_description_fr"
+                        "doc.portfolio.category_description_fr",
+                        "doc.unions"
                     ]
                 }
             },
             {
-                # Portuguese fields with Portuguese analyzer  
+                # Portuguese fields with Portuguese analyzer
                 "multi_match": {
                     "query": search_query,
                     "type": "most_fields",
@@ -627,7 +630,8 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                         "doc.profile_experience.pt",
                         "doc.projects_themes_list.pt",
                         "doc.portfolio.category_name_pt",
-                        "doc.portfolio.category_description_pt"
+                        "doc.portfolio.category_description_pt",
+                        "doc.unions"
                     ]
                 }
             },
