@@ -935,6 +935,8 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
 
     print(f"[DEBUG] Successfully processed {len(matching_professionals)} professionals")
 
+    print(f"[DEBUG] Items for output: {matching_professionals}")
+
     # Create final response in the format: response.result.items
     try:
         response_body = {
