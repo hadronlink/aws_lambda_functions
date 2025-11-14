@@ -929,7 +929,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
             'currently_insured': currently_insured,  # ALWAYS included
             'currently_certified': currently_certified,  # ALWAYS included
             'profile_image_complete_path': professional.get('profile_image_complete_path', ''),
-            'reviews_details': reviews_details  # Add the reviews details,
+            'reviews_details': reviews_details,  # Add the reviews details
             'unions': professional.get('unions', [])
         })
 
