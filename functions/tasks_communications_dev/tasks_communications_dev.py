@@ -606,24 +606,9 @@ def get_task_communication_by_supervisor_and_task(payload):
                 break
 
         if not task_communication:
-            # Return empty structure matching normal reply format
+            # Return empty object
             print(f'[DEBUG INFO] No task communication found for supervisor {supervisor_id} on task {xano_task_id}')
-            empty_communication = {
-                'xano_task_id': xano_task_id,
-                'task_communication_id': '',
-                'task_owner_xano_profile_contractor_id': '',
-                'task_owner_name': '',
-                'supervisor_xano_profile_contractor_id': supervisor_id,
-                'supervisor_name': '',
-                'supervisor_access_is_active': False,
-                'supervisor_acceptance_date': '',
-                'supervisor_end_date': '',
-                'messages': [],
-                'new_messages_to_task_owner': False,
-                'new_messages_to_supervisor': False,
-                'created_at': '',
-                'updated_at': ''
-            }
+            empty_communication = {}
             return {
                 'statusCode': 200,
                 'body': json.dumps(empty_communication, default=str)
