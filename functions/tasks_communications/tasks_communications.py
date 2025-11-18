@@ -2,6 +2,9 @@ import json
 import boto3
 import datetime
 from boto3.dynamodb.conditions import Key, Attr
+import base64
+import os
+from google.oauth2 import service_account
 from google.cloud import storage
 
 # Initialize DynamoDB resource
@@ -9,9 +12,13 @@ dynamodb = boto3.resource('dynamodb')
 tasks_communications_table = dynamodb.Table('tasks_communications')
 tasks_documentation_table = dynamodb.Table('tasks_documentation')
 
+# Initialize Google Storage client with credentials
+creds_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_JSON'])
+creds = service_account.Credentials.from_service_account_info(json.loads(creds_json))
+storage_client = storage.Client(credentials=creds)
+
 # Google Cloud Storage configuration
 GCS_BUCKET_NAME = 'hadronlink_pictures'
-storage_client = storage.Client()
 
 
 def add_file_urls_to_messages(messages):
