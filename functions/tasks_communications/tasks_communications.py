@@ -419,6 +419,10 @@ def handle_get(payload):
         elif 'xano_task_id' in payload and 'supervisor_xano_profile_contractor_id' in payload:
             return get_task_communication_by_supervisor_and_task(payload)
 
+        # Get task communication by task_owner and task
+        elif 'xano_task_id' in payload and 'task_owner_xano_profile_contractor_id' in payload:
+            return get_task_communication_by_task_owner_and_task(payload)
+
         # Get all task communications for a task
         elif 'xano_task_id' in payload:
             return get_task_communications_by_task(payload)
@@ -646,6 +650,91 @@ def get_task_communication_by_supervisor_and_task(payload):
 
     except Exception as e:
         print(f"[ERROR] Failed to get task communication by supervisor and task: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
+def get_task_communication_by_task_owner_and_task(payload):
+    """
+    Gets the task communication for a specific task owner and task
+    Queries by xano_task_id and filters by task_owner_xano_profile_contractor_id
+    Automatically marks messages as read for the task owner
+
+    Required parameters:
+    - xano_task_id
+    - task_owner_xano_profile_contractor_id
+    """
+    print('[DEBUG INFO] Getting task communication by task owner and task...')
+
+    try:
+        xano_task_id = payload['xano_task_id']
+        task_owner_id = payload['task_owner_xano_profile_contractor_id']
+
+        # Query all task communications for this task
+        response = tasks_communications_table.query(
+            KeyConditionExpression=Key('xano_task_id').eq(xano_task_id)
+        )
+
+        items = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = tasks_communications_table.query(
+                KeyConditionExpression=Key('xano_task_id').eq(xano_task_id),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        # Find the task communication for this task owner
+        task_communication = None
+        for item in items:
+            if item.get('task_owner_xano_profile_contractor_id') == task_owner_id:
+                task_communication = item
+                break
+
+        if not task_communication:
+            # Return empty object
+            print(f'[DEBUG INFO] No task communication found for task owner {task_owner_id} on task {xano_task_id}')
+            empty_communication = {}
+            return {
+                'statusCode': 200,
+                'body': json.dumps(empty_communication, default=str)
+            }
+
+        task_communication_id = task_communication['task_communication_id']
+
+        # Sort messages and add file URLs
+        if task_communication.get('messages'):
+            task_communication['messages'].sort(key=lambda msg: msg.get('timestamp', ''), reverse=True)
+            task_communication['messages'] = add_file_urls_to_messages(task_communication['messages'])
+
+        # Mark messages as read for task owner
+        current_time = datetime.datetime.utcnow().isoformat()
+        tasks_communications_table.update_item(
+            Key={
+                'xano_task_id': xano_task_id,
+                'task_communication_id': task_communication_id
+            },
+            UpdateExpression='SET new_messages_to_task_owner = :false, updated_at = :updated_at',
+            ExpressionAttributeValues={
+                ':false': False,
+                ':updated_at': current_time
+            },
+            ReturnValues='NONE'
+        )
+        print('[DEBUG INFO] Marked messages as read for task owner')
+
+        print(f"[DEBUG INFO] Found task communication for task owner {task_owner_id} on task {xano_task_id}")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(task_communication, default=str)
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to get task communication by task owner and task: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
