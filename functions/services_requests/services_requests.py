@@ -358,6 +358,13 @@ def handle_get(event, payload):
         elif 'in_progress_with_expired_deadline' in payload:
             print("handle_get: calling get_in_progress_with_expired_deadline")
             return get_in_progress_with_expired_deadline()
+        elif 'emails_to_eliminate' in payload:
+            print("handle_get: calling get_sr_by_pros_closed_to_work")
+            emails_to_eliminate = payload.get('emails_to_eliminate', [])
+            # Handle if it comes as a comma-separated string
+            if isinstance(emails_to_eliminate, str):
+                emails_to_eliminate = [email.strip() for email in emails_to_eliminate.split(',') if email.strip()]
+            return get_sr_by_pros_closed_to_work(emails_to_eliminate)
         else:
             print("handle_get: calling get_all")
             search_query = payload.get('search_query', '')
@@ -2200,6 +2207,222 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
         
     except Exception as e:
         print(f"[ERROR] Error in get_by_pro: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+def get_sr_by_pros_closed_to_work(emails_to_eliminate):
+    """
+    Find professionals with open_to_work=false who match open service requests
+    based on geohash, trades, and project themes, excluding specified emails.
+
+    Args:
+        emails_to_eliminate (list): List of emails to exclude from results
+
+    Returns:
+        dict: Response with matched professionals and their language/phone
+    """
+    print('[DEBUG INFO] Initializing get_sr_by_pros_closed_to_work function...')
+    print(f'[DEBUG INFO] Emails to eliminate: {emails_to_eliminate}')
+
+    try:
+        # Calculate date range: today and 15 days ago
+        today = datetime.datetime.now()
+        fifteen_days_ago = today - datetime.timedelta(days=15)
+
+        # Convert to ISO format for comparison with created_at timestamps
+        fifteen_days_ago_str = fifteen_days_ago.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+        today_str = today.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+        print(f'[DEBUG INFO] Date range: {fifteen_days_ago_str} to {today_str}')
+
+        # Query DynamoDB for open service requests created in the last 15 days
+        # First, scan all items and filter in memory (DynamoDB doesn't support date range on non-key attributes efficiently)
+        response = table.scan()
+        items = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            items.extend(response.get('Items', []))
+
+        print(f'[DEBUG INFO] Total service requests scanned: {len(items)}')
+
+        # Filter for open service requests within date range
+        filtered_service_requests = []
+        for item in items:
+            created_at = item.get('created_at', '')
+            status = item.get('status', '').lower()
+
+            # Check if status is "Open" and created within last 15 days
+            if status == 'open' and created_at >= fifteen_days_ago_str:
+                # Calculate if created_at + 15 days >= today
+                try:
+                    created_datetime = datetime.datetime.strptime(created_at, '%Y-%m-%dT%H:%M:%S.%fZ')
+                except ValueError:
+                    # Try alternative format if needed
+                    try:
+                        created_datetime = datetime.datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    except:
+                        print(f"[WARNING] Could not parse created_at: {created_at}")
+                        continue
+
+                expiration_date = created_datetime + datetime.timedelta(days=15)
+
+                if expiration_date >= today:
+                    # Extract only needed fields
+                    sr_data = {
+                        'service_request_id': item.get('service_request_id'),
+                        'SR_trades_ids': item.get('SR_trades_ids', []),
+                        'SR_projects_themes_ids': item.get('SR_projects_themes_ids', []),
+                        'geohash': item.get('geohash', '')
+                    }
+                    filtered_service_requests.append(sr_data)
+
+        print(f'[DEBUG INFO] Filtered service requests (open, within date range): {len(filtered_service_requests)}')
+
+        if not filtered_service_requests:
+            print('[DEBUG INFO] No matching service requests found')
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'matched_professionals': []})
+            }
+
+        # Build OpenSearch query to find professionals with open_to_work=false
+        # and email not in emails_to_eliminate
+        must_conditions = [
+            {
+                "term": {
+                    "doc.open_to_work": False
+                }
+            }
+        ]
+
+        # Add email exclusion if emails_to_eliminate is provided
+        if emails_to_eliminate and len(emails_to_eliminate) > 0:
+            must_not_conditions = []
+            for email in emails_to_eliminate:
+                must_not_conditions.append({
+                    "term": {
+                        "doc.email.keyword": email
+                    }
+                })
+
+            opensearch_payload = {
+                "query": {
+                    "bool": {
+                        "must": must_conditions,
+                        "must_not": must_not_conditions
+                    }
+                },
+                "size": 10000  # Get all matching professionals
+            }
+        else:
+            opensearch_payload = {
+                "query": {
+                    "bool": {
+                        "must": must_conditions
+                    }
+                },
+                "size": 10000
+            }
+
+        print(f'[DEBUG INFO] OpenSearch query: {json.dumps(opensearch_payload, indent=2)}')
+
+        # Query OpenSearch for professionals
+        response_hits = query_opensearch(opensearch_payload)
+
+        if isinstance(response_hits, dict) and 'statusCode' in response_hits:
+            print(f'[ERROR] OpenSearch query failed: {response_hits}')
+            return response_hits
+
+        print(f'[DEBUG INFO] Found {len(response_hits)} professionals with open_to_work=false')
+
+        # Extract professionals from hits
+        professionals = []
+        for hit in response_hits:
+            professional = hit.get('_source', {}).get('doc')
+            if professional:
+                professionals.append(professional)
+
+        print(f'[DEBUG INFO] Extracted {len(professionals)} professionals')
+
+        # Match professionals with service requests
+        matched_professionals = []
+        matched_combinations = set()  # Track unique email+phone combinations
+
+        for professional in professionals:
+            prof_geohash = professional.get('geohash', '')
+            prof_trades_ids = professional.get('trades_id', [])
+            prof_themes_ids = professional.get('dict_projects_themes_id', [])
+            prof_email = professional.get('email', '')
+            prof_language = professional.get('language', '')
+            prof_phone = professional.get('phone', '')
+
+            # Skip if no geohash (can't match)
+            if not prof_geohash or len(prof_geohash) < 2:
+                continue
+
+            # Get first 2 digits of professional's geohash
+            prof_geohash_prefix = prof_geohash[:2]
+
+            # Check against each service request
+            for sr in filtered_service_requests:
+                sr_geohash = sr.get('geohash', '')
+
+                # Skip if no geohash
+                if not sr_geohash or len(sr_geohash) < 2:
+                    continue
+
+                # Check if first 2 digits match
+                sr_geohash_prefix = sr_geohash[:2]
+
+                if prof_geohash_prefix != sr_geohash_prefix:
+                    continue
+
+                # Geohash matches, now check trades or themes intersection
+                sr_trades_ids = sr.get('SR_trades_ids', [])
+                sr_themes_ids = sr.get('SR_projects_themes_ids', [])
+
+                # Convert to sets for intersection check
+                prof_trades_set = set(prof_trades_ids) if prof_trades_ids else set()
+                prof_themes_set = set(prof_themes_ids) if prof_themes_ids else set()
+                sr_trades_set = set(sr_trades_ids) if sr_trades_ids else set()
+                sr_themes_set = set(sr_themes_ids) if sr_themes_ids else set()
+
+                # Check if there's intersection in trades or themes
+                trades_match = bool(prof_trades_set.intersection(sr_trades_set))
+                themes_match = bool(prof_themes_set.intersection(sr_themes_set))
+
+                if trades_match or themes_match:
+                    # Professional matches this service request
+                    # Create unique key from email+phone to eliminate duplicates
+                    unique_key = (prof_email, prof_phone)
+
+                    # Add to results if not already added
+                    if unique_key not in matched_combinations:
+                        matched_combinations.add(unique_key)
+                        matched_professionals.append({
+                            'email': prof_email,
+                            'language': prof_language,
+                            'phone': prof_phone
+                        })
+                        print(f'[DEBUG INFO] Matched professional: {prof_email}')
+                    # Break to avoid adding same professional multiple times for different SRs
+                    break
+
+        print(f'[DEBUG INFO] Total matched professionals: {len(matched_professionals)}')
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'matched_professionals': matched_professionals})
+        }
+
+    except Exception as e:
+        print(f'[ERROR] Exception in get_sr_by_pros_closed_to_work: {str(e)}')
         import traceback
         traceback.print_exc()
         return {
