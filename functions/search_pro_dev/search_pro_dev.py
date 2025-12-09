@@ -559,7 +559,14 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     }
                 ],
                 "should": [],
-                "filter": []
+                "filter": [],
+                "must_not": [
+                    {
+                        "term": {
+                            "_id": "Contractor_139"
+                        }
+                    }
+                ]
             }
         },
         "size": max_results_to_bring,
