@@ -139,7 +139,7 @@ def query_opensearch(opensearch_payload, include_total=False):
             'body': json.dumps({'error': str(e)})
         }
 
-def search_jobs(search_query, page, only_certified, only_unionized, only_with_car, long_term_job, hourly_pay_min, country, trade_id, city, trades_on_top, max_results_to_bring=60):
+def search_jobs(search_query, page, only_certified, only_unionized, only_with_car, long_term_job, hourly_pay_min, trade_id, city, trades_on_top, reference_geohash, geohash_precision, max_results_to_bring=60):
     """Search for jobs with pagination and filters"""
     
     print('[DEBUG INFO] Finding matching jobs using OpenSearch approach...')
@@ -267,23 +267,15 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             }
         })
 
-    # Add country filter if provided and not empty
-    if country and country.strip() != '' and country.lower() != 'all':
+    # Add geohash filter if reference_geohash and geohash_precision are provided
+    if reference_geohash and reference_geohash.strip() != '' and geohash_precision is not None and geohash_precision > 0:
+        # Extract the prefix based on geohash_precision
+        geohash_prefix = reference_geohash[:geohash_precision]
+        print(f"[DEBUG] Filtering by geohash prefix: '{geohash_prefix}' (precision: {geohash_precision})")
+
         opensearch_payload["query"]["bool"]["must"].append({
-            "bool": {
-                "should": [
-                    {
-                        "term": {
-                            "country": country.upper()
-                        }
-                    },
-                    {
-                        "term": {
-                            "country.keyword": country.upper()
-                        }
-                    }
-                ],
-                "minimum_should_match": 1
+            "prefix": {
+                "geohash": geohash_prefix
             }
         })
 
@@ -456,10 +448,17 @@ def lambda_handler(event, context):
             except (ValueError, TypeError):
                 hourly_pay_min = None
 
-        # Handle country parameter
-        country = payload.get('country', '')
-        if country is None:
-            country = ''
+        # Handle reference_geohash and geohash_precision parameters
+        reference_geohash = payload.get('reference_geohash', '')
+        if reference_geohash is None:
+            reference_geohash = ''
+
+        geohash_precision = None
+        if payload.get('geohash_precision'):
+            try:
+                geohash_precision = int(payload.get('geohash_precision'))
+            except (ValueError, TypeError):
+                geohash_precision = None
 
         # Default results per page
         max_results_to_bring = 60
@@ -472,11 +471,12 @@ def lambda_handler(event, context):
         print(f"  only_with_car: {only_with_car}")
         print(f"  long_term_job: {long_term_job}")
         print(f"  hourly_pay_min: {hourly_pay_min}")
-        print(f"  country: '{country}'")
         print(f"  trade_id: {trade_id}")
         print(f"  city: '{city}'")
         print(f"  trades_on_top: {trades_on_top}")
-        
+        print(f"  reference_geohash: '{reference_geohash}'")
+        print(f"  geohash_precision: {geohash_precision}")
+
 
         return search_jobs(
             search_query=search_query,
@@ -486,10 +486,11 @@ def lambda_handler(event, context):
             only_with_car=only_with_car,
             long_term_job=long_term_job,
             hourly_pay_min=hourly_pay_min,
-            country=country,
             trade_id=trade_id,
             city=city,
             trades_on_top=trades_on_top,
+            reference_geohash=reference_geohash,
+            geohash_precision=geohash_precision,
             max_results_to_bring=max_results_to_bring
         )
     
