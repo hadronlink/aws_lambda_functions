@@ -34,6 +34,10 @@ phases:
             
             echo "📄 Copying Python files..."
             cp *.py "$PACKAGE_DIR/"
+            if [ -d "branches" ]; then
+              echo "📂 Copying branches folder..."
+              cp -r branches "$PACKAGE_DIR/"
+            fi
             
             cd "$PACKAGE_DIR"
             zip -r -q "/tmp/${FUNC_NAME}.zip" .
