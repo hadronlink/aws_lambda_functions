@@ -18,6 +18,8 @@ def lambda_handler(event, context):
                 body = '{}'
             payload = json.loads(body)
 
+        print(f"[INFO] Xano input: {payload}")
+        
         branch = payload.get('branch', 'dev')
         print(f"[INFO] Routing to branch: {branch}, operation: {operation}")
         branch_module_name = branch.replace('.', '_')
