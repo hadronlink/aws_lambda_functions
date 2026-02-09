@@ -82,6 +82,44 @@ def parse_boolean_param(param_value, default=False):
         return False
     return bool(param_value)
 
+def decode_geohash(geohash_str):
+    """Decode a geohash string into (latitude, longitude) center coordinates."""
+    base32 = '0123456789bcdefghjkmnpqrstuvwxyz'
+    lat_range = [-90.0, 90.0]
+    lon_range = [-180.0, 180.0]
+    is_lon = True
+    for char in geohash_str:
+        val = base32.index(char)
+        for bit in range(4, -1, -1):
+            if is_lon:
+                mid = (lon_range[0] + lon_range[1]) / 2
+                if val & (1 << bit):
+                    lon_range[0] = mid
+                else:
+                    lon_range[1] = mid
+            else:
+                mid = (lat_range[0] + lat_range[1]) / 2
+                if val & (1 << bit):
+                    lat_range[0] = mid
+                else:
+                    lat_range[1] = mid
+            is_lon = not is_lon
+    lat = (lat_range[0] + lat_range[1]) / 2
+    lon = (lon_range[0] + lon_range[1]) / 2
+    return (lat, lon)
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two points in kilometers using Haversine formula."""
+    R = 6371.0
+    lat1_rad = math.radians(float(lat1))
+    lon1_rad = math.radians(float(lon1))
+    lat2_rad = math.radians(float(lat2))
+    lon2_rad = math.radians(float(lon2))
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
 
 def query_opensearch(opensearch_payload, include_total=False):
     """
@@ -107,11 +145,11 @@ def query_opensearch(opensearch_payload, include_total=False):
 
         hits = json_response.get('hits', {}).get('hits', [])
         print(f"[DEBUG] Found {len(hits)} raw hits.")
-        
+
         if include_total:
             total = json_response.get('hits', {}).get('total', {}).get('value', 0)
             return {'hits': hits, 'total': total}
-        
+
         return hits
 
     except requests.exceptions.Timeout:
@@ -141,18 +179,27 @@ def query_opensearch(opensearch_payload, include_total=False):
 
 def search_jobs(search_query, page, only_certified, only_unionized, only_with_car, long_term_job, hourly_pay_min, trade_id, city, trades_on_top, reference_geohash, geohash_precision, max_results_to_bring=60):
     """Search for jobs with pagination and filters"""
-    
+
     print('[DEBUG INFO] Finding matching jobs using OpenSearch approach...')
 
     # Calculate offset based on page
     offset = (page - 1) * max_results_to_bring
 
-    # We need to fetch more results if we're doing custom sorting to ensure proper pagination
-    # When trades_on_top is specified, we need to get more results and then sort/paginate
-    if trades_on_top and len(trades_on_top) > 0:
-        # Fetch more results to ensure we have enough after sorting
-        fetch_size = max_results_to_bring * 3  # Get 3x more results for better sorting
-        fetch_offset = 0  # Start from beginning for custom sorting
+    # Decode reference location for distance sorting
+    ref_lat = None
+    ref_lon = None
+    if reference_geohash and reference_geohash.strip() != '':
+        try:
+            ref_lat, ref_lon = decode_geohash(reference_geohash)
+            print(f"[DEBUG] Decoded reference_geohash '{reference_geohash}' to lat={ref_lat}, lon={ref_lon}")
+        except Exception as e:
+            print(f"[WARN] Failed to decode reference_geohash '{reference_geohash}': {e}")
+
+    # When custom sorting is needed, fetch more results from offset 0
+    needs_custom_sort = (trades_on_top and len(trades_on_top) > 0) or ref_lat is not None
+    if needs_custom_sort:
+        fetch_size = max_results_to_bring * 3
+        fetch_offset = 0
     else:
         fetch_size = max_results_to_bring
         fetch_offset = offset
@@ -170,11 +217,11 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
         "from": fetch_offset,
         "track_total_hits": True,
         "sort": [
-            {"created_at": {"order": "desc"}}  # Sort by newest jobs first
+            {"created_at": {"order": "desc"}}
         ],
-        "_source": True  # Explicitly request all source fields
+        "_source": True
     }
-    
+
     # Add search query if provided
     if search_query and search_query.strip() != '':
         opensearch_payload["query"]["bool"]["should"].append({
@@ -182,7 +229,7 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
                 "query": search_query,
                 "fields": [
                     "title",
-                    "trades_and_skills", 
+                    "trades_and_skills",
                     "additional_info",
                     "address",
                     "city",
@@ -267,18 +314,6 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             }
         })
 
-    # Add geohash filter if reference_geohash and geohash_precision are provided
-    if reference_geohash and reference_geohash.strip() != '' and geohash_precision is not None and geohash_precision > 0:
-        # Extract the prefix based on geohash_precision
-        geohash_prefix = reference_geohash[:geohash_precision]
-        print(f"[DEBUG] Filtering by geohash prefix: '{geohash_prefix}' (precision: {geohash_precision})")
-
-        opensearch_payload["query"]["bool"]["must"].append({
-            "prefix": {
-                "geohash": geohash_prefix
-            }
-        })
-
     print(f"[DEBUG] OpenSearch payload: {json.dumps(opensearch_payload, indent=2)}")
 
     # Execute OpenSearch query with total count
@@ -298,16 +333,16 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
         else:
             response_hits = response_data
             total = len(response_hits)
-        
+
         print(f"[DEBUG] Successfully extracted {len(response_hits)} hits, total: {total}")
-        
+
     except Exception as e:
         print(f"[ERROR] Failed to extract hits from response: {e}")
         return create_error_response(500, f"Error processing OpenSearch response: {str(e)}")
 
-    # Process hits and apply custom sorting if needed
+    # Process hits
     all_jobs = []
-    
+
     for i, hit in enumerate(response_hits):
         job = hit.get('_source')
         if not job:
@@ -318,28 +353,39 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
         opensearch_score = hit.get('_score') or 0.0
 
         # Build job result with ALL fields from the document
-        job_result = job.copy()  # Copy all fields from the source document
-        job_result['opensearch_score'] = opensearch_score  # Add the OpenSearch score
+        job_result = job.copy()
+        job_result['opensearch_score'] = opensearch_score
 
         all_jobs.append(job_result)
 
-    # Apply custom sorting if trades_on_top was specified
-    if trades_on_top and len(trades_on_top) > 0:
-        print(f"[DEBUG] Applying custom sorting with trades_on_top: {trades_on_top}")
-        
+    # Apply custom sorting: trade priority, then distance, then created_at
+    if needs_custom_sort:
+        print(f"[DEBUG] Applying custom sorting with trades_on_top: {trades_on_top}, ref_lat: {ref_lat}, ref_lon: {ref_lon}")
+
         def sort_key(job):
-            trade_id = job.get('trade_id')
-            if trade_id in trades_on_top:
-                # Priority based on position in trades_on_top list
-                priority = trades_on_top.index(trade_id)
+            # Trade priority: matching trades first, in order
+            job_trade_id = job.get('trade_id')
+            if trades_on_top and job_trade_id in trades_on_top:
+                priority = trades_on_top.index(job_trade_id)
             else:
-                # Non-priority trades get a high number
                 priority = 999
-            
-            # Secondary sort by created_at (newest first)
+
+            # Distance from reference point (ascending - nearest first)
+            if ref_lat is not None:
+                location = job.get('location', {})
+                job_lat = location.get('lat')
+                job_lon = location.get('lon')
+                if job_lat is not None and job_lon is not None:
+                    distance = haversine_distance(ref_lat, ref_lon, job_lat, job_lon)
+                else:
+                    distance = 999999.0
+            else:
+                distance = 0
+
+            # Created_at descending (newest first)
             created_at = job.get('created_at', 0)
-            return (priority, -created_at)  # Negative for descending order
-        
+            return (priority, distance, -created_at)
+
         all_jobs.sort(key=sort_key)
         print(f"[DEBUG] Applied custom sorting to {len(all_jobs)} jobs")
 
@@ -351,16 +397,13 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
     print(f"[DEBUG] Pagination: showing jobs {start_index + 1}-{min(end_index, len(all_jobs))} of {len(all_jobs)} total")
     print(f"[DEBUG] Successfully processed {len(matching_jobs)} jobs for this page")
 
-    # Create final response - use all_jobs length for total when custom sorting is applied
+    # Create final response
     try:
-        # When custom sorting is applied, we need to use the fetched results count for accurate pagination
-        if trades_on_top and len(trades_on_top) > 0:
-            # For custom sorting, we use the actual filtered results count
+        if needs_custom_sort:
             response_total = len(all_jobs)
         else:
-            # For normal queries, use the OpenSearch total
             response_total = total
-            
+
         response_body = {
             'items': matching_jobs,
             'total': response_total,
@@ -368,13 +411,13 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             'max_results_to_bring': max_results_to_bring,
             'has_more': response_total > (page * max_results_to_bring)
         }
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps(response_body, default=str),
             'headers': {'Content-Type': 'application/json'}
         }
-        
+
     except Exception as response_error:
         print(f"[ERROR] Failed to create response: {response_error}")
         traceback.print_exc()
@@ -386,10 +429,10 @@ def handle_request(event, payload):
 
     if operation == 'GET':
         print(f'Input payload: {payload}')
-        
+
         # Parse search parameters
         search_query = payload.get('search_query', '')
-        
+
         # Convert 'page' to integer
         try:
             page = int(payload.get('page', 1))
@@ -402,7 +445,7 @@ def handle_request(event, payload):
         only_certified = parse_boolean_param(payload.get('only_certified'), default=False)
         only_unionized = parse_boolean_param(payload.get('only_unionized'), default=False)
         only_with_car = parse_boolean_param(payload.get('only_with_car'), default=False)
-        
+
         # Handle long_term_job - can be True, False, or None (no filter)
         long_term_job_param = payload.get('long_term_job')
         if long_term_job_param is None or long_term_job_param == '':
@@ -492,6 +535,6 @@ def handle_request(event, payload):
             geohash_precision=geohash_precision,
             max_results_to_bring=max_results_to_bring
         )
-    
+
     else:
         return create_error_response(405, "Method not allowed")
