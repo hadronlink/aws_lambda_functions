@@ -39,6 +39,7 @@ phases:
               cp -r branches "$PACKAGE_DIR/"
             fi
             
+
             cd "$PACKAGE_DIR"
             zip -r -q "/tmp/${FUNC_NAME}.zip" .
             
