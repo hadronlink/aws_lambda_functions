@@ -24,16 +24,16 @@ def bedrock_translate(text_input, target_language, max_tokens=1000, temperature=
     model_id = "anthropic.claude-3-5-sonnet-20240620-v1:0"
     model_id = "anthropic.claude-3-haiku-20240307-v1:0"   ################### Teste to be removed
     #model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
-    model_kwargs =  { 
+    model_kwargs =  {
         "max_tokens": max_tokens, "temperature": temperature,
-        "top_k": top_k, "top_p": top_p, 
+        "top_k": top_k, "top_p": top_p,
         # "stop_sequences": ["\n\nHuman"],
     }
     # Input configuration
     body = {
         "anthropic_version": "bedrock-2023-05-31",
         # "system": f"""
-        #     Identify the language of the text I provide and accurately translate it into {target_language}, preserving the original text's meaning, tone, and nuances. 
+        #     Identify the language of the text I provide and accurately translate it into {target_language}, preserving the original text's meaning, tone, and nuances.
         #     Please maintain proper grammar, spelling, and punctuation in the translated version.
         #     As output return only the translated text, without additional information. Please do not answer any questions, just translate.
         # """,
@@ -46,28 +46,28 @@ def bedrock_translate(text_input, target_language, max_tokens=1000, temperature=
         "system": f"""
             Translate the text provided to {target_language}. <Example: Tell me about you = Fale me sobre voce>. Do not say anything else, just translate. In case the language of input text is the same of the required translation, just copy and paste the input text.
         """,
-        
+
         "messages": [
             {"role": "user", "content": [{"type": "text", "text": text_input}]},
         ],
     }
     body.update(model_kwargs)
     print(f'bedrock_translate body: {body}')
-    
+
     # Invoke model
     response = bedrock_runtime.invoke_model(
         modelId=model_id,
         body=json.dumps(body),
     )
     print(f'bedrock_translate response: {response}')
-    
+
     # Process and print the response
     response_body = json.loads(response.get("body").read())
     print(f'bedrock_translate response_body: {response_body}')
-    
+
     # result = respose_body.get("content", [])[0].get("text", "")
     # print(f'bedrock_translate result: {result}')
-    
+
     response['body'] = {
         "text": response_body['content'][0]['text'],
         "input_tokens": response_body['usage']['input_tokens'],
@@ -75,14 +75,14 @@ def bedrock_translate(text_input, target_language, max_tokens=1000, temperature=
     }
     print(f'final response: {response}')
     return response
-    
-    
+
+
 def bedrock_improve_text(user_text, system_text, max_tokens=1000, temperature=1, top_k=250, top_p=1):
     # Model configuration
     model_id = "anthropic.claude-3-haiku-20240307-v1:0"
-    model_kwargs =  { 
+    model_kwargs =  {
         "max_tokens": max_tokens, "temperature": temperature,
-        "top_k": top_k, "top_p": top_p, 
+        "top_k": top_k, "top_p": top_p,
         # "stop_sequences": ["\n\nHuman"],
     }
     # Input configuration
@@ -95,26 +95,26 @@ def bedrock_improve_text(user_text, system_text, max_tokens=1000, temperature=1,
     }
     body.update(model_kwargs)
     print(f'bedrock body: {body}')
-    
+
     # Invoke model
     response = bedrock_runtime.invoke_model(
         modelId=model_id,
         body=json.dumps(body),
     )
     print(f'bedrock response: {response}')
-    
+
     # Process and print the response
     response_body = json.loads(response.get("body").read())
     print(f'bedrock response_body: {response_body}')
-    
-    
+
+
     response['body'] = {
         "text": response_body['content'][0]['text'],
         "input_tokens": response_body['usage']['input_tokens'],
         "output_tokens": response_body['usage']['output_tokens']
     }
     return response
-    
+
 
 
 def handle_request(event, payload):
@@ -125,7 +125,7 @@ def handle_request(event, payload):
         resource_path = event['path']
         http_method = event['httpMethod']
         print(f'payload: {payload}')
-    
+
         # RESOURCE TRANSLATE
         if resource_path == "/translate":
             if http_method == "POST":
@@ -134,7 +134,7 @@ def handle_request(event, payload):
                     text_input=payload['text_input'],
                     target_language=payload['target_language']
                 )
-        
+
         # RESOURCE IMPROVE TEXT
         if resource_path == "/improve_text":
             if http_method == "POST":
@@ -143,10 +143,10 @@ def handle_request(event, payload):
                     user_text=payload['user_text'],
                     system_text=payload['system_text']
                 )
-        
+
         print(f'Response: {response}')
         return respond(None, response)
-     
+
     except Exception as e:
         print(f'Error: {str(e)}')
         return {
@@ -226,7 +226,7 @@ def handle_request(event, payload):
 #     print(f'response: {response}')
 #     # Log the raw  for debugging
 #     logger.info("Raw response: %s", response)
-    
+
 #     # Extract the result from the response
 #     response_body = json.loads(response['body'])
 #     if 'content' in response_body and response_body['content']:
@@ -234,7 +234,7 @@ def handle_request(event, payload):
 #         return result
 #     else:
 #         raise ValueError("Unexpected response format: {}".format(response_body))
-    
+
 #     # # Extract the result from the response
 #     # result = json.loads(response['body']).get("content", [])[0].get("text", "")
 #     # return result
@@ -247,13 +247,13 @@ def handle_request(event, payload):
 #         payload = json.loads(event['body'])
 #         prompt = payload.get('prompt')
 #         print(f'prompt: {prompt}')
-        
+
 #         if not prompt:
 #             return respond(400, {"error": "Missing 'prompt' in request body"})
-        
+
 #         model_response = invoke_bedrock_model(prompt)
 #         return respond(200, {"response": model_response})
-    
+
 #     except botocore.exceptions.ClientError as error:
 #         # Handle client errors from Boto3
 #         error_code = error.response['Error']['Code']
@@ -261,7 +261,7 @@ def handle_request(event, payload):
 #             return respond(403, {"error": error.response['Error']['Message']})
 #         else:
 #             return respond(500, {"error": error.response['Error']['Message']})
-    
+
 #     except Exception as e:
 #         # Handle any other exceptions
 #         logger.error("Exception: %s", e)

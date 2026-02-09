@@ -20,8 +20,6 @@ from google.cloud import storage
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from aws_requests_auth.aws_auth import AWSRequestsAuth
 
-from invoice_generator import lambda_handler_generate_invoice
-
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Flowable, HRFlowable, Frame
@@ -42,7 +40,7 @@ table_roles = dynamodb.Table('roles')
 
 # Initialize Google Storage client for PDF storage
 creds_json = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_JSON'])
-creds = service_account.Credentials.from_service_account_info(json.loads(creds_json)) # type: ignore
+creds = service_account.Credentials.from_service_account_info(json.loads(creds_json))
 client = storage.Client(credentials=creds)
 
 # Constants
@@ -123,7 +121,6 @@ PLACEHOLDERS = {
     }
 }
 
-
 # OpenSearch configuration for profiles
 OPENSEARCH_ENDPOINT = 'https://search-connecus-home-xter5mxymdzivmnio2iuvwgg4a.us-east-2.es.amazonaws.com'
 OPENSEARCH_INDEX = 'pros_from_xano_live'
@@ -171,7 +168,6 @@ password = opensearch_credentials.get('password')
 # Use HTTPBasicAuth for username/password authentication
 auth = HTTPBasicAuth(username, password)
 headers = {"Content-Type": "application/json"}
-
 
 def query_opensearch(payload):
     """
@@ -314,7 +310,6 @@ def get_professional_by_role_id(role_id):
     except Exception as e:
         print(f"Error getting professional by role_id {role_id}: {e}")
         return None
-
 
 def handle_request(event, payload):
     operation = event['httpMethod']

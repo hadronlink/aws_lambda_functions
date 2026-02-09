@@ -23,12 +23,12 @@ def respond(err, res=None):
             'Content-Type': 'application/json',
         },
     }
-    
+
 def get_date_day(string_datetime):
     date = datetime.fromisoformat(string_datetime)
     string_date = date.strftime('%Y-%m-%d')
     return string_date
-    
+
 def get_item(partition_key, sort_key):
     key = {
         'task_id': partition_key,
@@ -43,7 +43,7 @@ def query_all(partition_key, index_name=''):
             IndexName=index_name,
             KeyConditionExpression = Key(index_name.split('-')[0]).eq(partition_key)
     )
-    else:   
+    else:
         response = table.query(
             KeyConditionExpression = Key('task_id').eq(partition_key)
         )
@@ -54,7 +54,7 @@ def query_filter(partition_key, prefix_sort_key='group', attribute_name='', attr
     key_condition_expression = '#pk = :pk AND begins_with(#sk, :sk)'
     if index_name != '':
         if filter_condition != '':
-            
+
             if filter_condition == 'begins_with':
                 filter_expression = 'begins_with(#att, :att)'
             elif filter_condition == 'between':
@@ -66,14 +66,14 @@ def query_filter(partition_key, prefix_sort_key='group', attribute_name='', attr
                 print(f'filter_expression: {filter_expression}')
             else:
                 filter_expression = f'#att {filter_condition} :att'
-            
+
             expression_attribute_names = {'#pk': index_name.split('-')[0], '#sk': 'shift_id', '#att': attribute_name}
-            
+
             if filter_condition == 'between':
                 expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key, ':att1': json.loads(attribute_value)[0], ':att2': json.loads(attribute_value)[1]}
             else:
                 expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key, ':att': attribute_value}
-            
+
             response = table.query(
                 IndexName=index_name,
                 KeyConditionExpression=key_condition_expression,
@@ -83,7 +83,7 @@ def query_filter(partition_key, prefix_sort_key='group', attribute_name='', attr
             )
         else:
             expression_attribute_names = {'#pk': index_name.split('-')[0], '#sk': 'shift_id'}
-            expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key} 
+            expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key}
             response = table.query(
                 IndexName=index_name,
                 KeyConditionExpression=key_condition_expression,
@@ -92,7 +92,7 @@ def query_filter(partition_key, prefix_sort_key='group', attribute_name='', attr
             )
     else:
         if filter_condition != '':
-            
+
             if filter_condition == 'begins_with':
                 filter_expression = 'begins_with(#att, :att)'
             elif filter_condition == 'between':
@@ -104,14 +104,14 @@ def query_filter(partition_key, prefix_sort_key='group', attribute_name='', attr
                 print(f'filter_expression: {filter_expression}')
             else:
                 filter_expression = f'#att {filter_condition} :att'
-                
+
             expression_attribute_names = {'#pk': 'task_id', '#sk': 'shift_id', '#att': attribute_name}
-            
+
             if filter_condition == 'between':
                 expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key, ':att1': json.loads(attribute_value)[0], ':att2': json.loads(attribute_value)[1]}
             else:
                 expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key, ':att': attribute_value}
-            
+
             response = table.query(
                 KeyConditionExpression=key_condition_expression,
                 FilterExpression = filter_expression,
@@ -120,7 +120,7 @@ def query_filter(partition_key, prefix_sort_key='group', attribute_name='', attr
             )
         else:
             expression_attribute_names = {'#pk': 'task_id', '#sk': 'shift_id'}
-            expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key} 
+            expression_attribute_values = {':pk': partition_key, ':sk': prefix_sort_key}
             response = table.query(
                 KeyConditionExpression=key_condition_expression,
                 ExpressionAttributeNames=expression_attribute_names,
@@ -148,11 +148,11 @@ def update_item(partition_key, sort_key, update_attributes):
         ExpressionAttributeValues=expression_attribute_values,
         ReturnValues = 'ALL_NEW')
     return response
-    
+
 def generate_time_slots(date_str, slot_size_minutes, initial_time_minutes):
     # Parse the input date
     start_date = datetime.strptime(date_str, "%Y-%m-%d") + timedelta(minutes=initial_time_minutes)
-    
+
 
     # Initialize an empty list to store time slots
     time_slots = []
@@ -168,7 +168,7 @@ def generate_time_slots(date_str, slot_size_minutes, initial_time_minutes):
         start_date = end_date
 
     return time_slots
-    
+
 def generate_time_slots_v2(date_str_utc, slot_size_minutes):
     print(f'Initiate function generate_time_slots_v2')
     # Parse the input date
@@ -186,11 +186,11 @@ def generate_time_slots_v2(date_str_utc, slot_size_minutes):
             "available_workers": []
         })
         start_date = end_date
-    
+
     print(f'Generated slots: {time_slots}')
 
     return time_slots
-    
+
 def is_available(shifts, new_shift):
     # Converting date/time strings to datetime objects
     new_start = datetime.fromisoformat(new_shift["start_datetime"])
@@ -215,14 +215,14 @@ def handle_request(event, payload):
         print("Received event: " + json.dumps(event, indent=2))
         operation = event['httpMethod']
         print(f'payload: {payload}')
-    
+
         # GET Method
         if operation == "GET":
             if 'get_pending_invitations' in payload:
                 print('Inside get_pending_invitations')
                 profile_ref = payload['profile_ref']
                 other_profiles = payload.get('other_profiles', [])
-                
+
                 # Query all shifts with pending invitation of this profile
                 all_shifts_pending_invitation = query_all(
                     partition_key=payload['profile_ref'],
@@ -235,42 +235,42 @@ def handle_request(event, payload):
                     end_search_datetime = datetime.fromisoformat(shift_pending["start_datetime"]) + timedelta(hours=24)
                     end_search_datetime_iso = end_search_datetime.isoformat()
                     search_value = json.dumps([initial_search_datetime_iso, end_search_datetime_iso])
-                    
+
                     # Query filtered shifts where main profile is already accepted worker
                     query_response = query_filter(
-                        partition_key = payload['profile_ref'], 
-                        attribute_name = 'start_datetime', 
+                        partition_key = payload['profile_ref'],
+                        attribute_name = 'start_datetime',
                         attribute_value = search_value,
                         filter_condition = 'between',
                         index_name=index2
                     )
                     shifts_accepted_main_profile = query_response['Items']
-                    
+
                     # Query filtered shifts where other profiles are already accepted workers
                     all_shifts_other_profiles = []
                     for other_profile_ref in other_profiles:
                         query_response = query_filter(
-                            partition_key = other_profile_ref, 
-                            attribute_name = 'start_datetime', 
+                            partition_key = other_profile_ref,
+                            attribute_name = 'start_datetime',
                             attribute_value = search_value,
                             filter_condition = 'between',
                             index_name=index2
                         )
                         all_shifts_other_profiles.extend(query_response['Items'])
-                    
+
                     # Check availability with main profile
                     worker_is_available = is_available(shifts=shifts_accepted_main_profile, new_shift=shift_pending)
-                    
+
                     # Check availability with all other profiles
                     all_other_profiles_available = True
                     if other_profiles:
                         all_other_profiles_available = is_available(shifts=all_shifts_other_profiles, new_shift=shift_pending)
-                    
+
                     shift_pending['schedule_conflict'] = not (worker_is_available and all_other_profiles_available)
-                
+
                 response = all_shifts_pending_invitation
-                             
-            
+
+
             elif 'pending_profile_ref' in payload:
                 response = query_all(
                     partition_key=payload['pending_profile_ref'],
@@ -278,9 +278,9 @@ def handle_request(event, payload):
                 )
             elif 'accepted_profile_ref' in payload:
                 response = query_filter(
-                    partition_key = payload['accepted_profile_ref'], 
-                    prefix_sort_key = payload['prefix_shift_id'], 
-                    attribute_name = payload['attribute_name'], 
+                    partition_key = payload['accepted_profile_ref'],
+                    prefix_sort_key = payload['prefix_shift_id'],
+                    attribute_name = payload['attribute_name'],
                     attribute_value = payload['attribute_value'],
                     filter_condition = payload['filter_condition'],
                     index_name=index2
@@ -293,25 +293,25 @@ def handle_request(event, payload):
                     )
                     batch_response.extend(response.get('Items', []))
                 response = batch_response
-            elif 'filter_condition' in payload: 
+            elif 'filter_condition' in payload:
                 response = query_filter(
-                    partition_key = payload['task_id'], 
-                    prefix_sort_key = payload['prefix_shift_id'], 
-                    attribute_name = payload['attribute_name'], 
+                    partition_key = payload['task_id'],
+                    prefix_sort_key = payload['prefix_shift_id'],
+                    attribute_name = payload['attribute_name'],
                     attribute_value = payload['attribute_value'],
                     filter_condition = payload['filter_condition']
                 )
-            elif 'prefix_shift_id' in payload: 
+            elif 'prefix_shift_id' in payload:
                 response = query_filter(
-                    partition_key = payload['task_id'], 
+                    partition_key = payload['task_id'],
                     prefix_sort_key = payload['prefix_shift_id'],
                 )
-            elif 'shift_id' in payload: 
-                response = get_item(payload['task_id'], payload['shift_id']) 
+            elif 'shift_id' in payload:
+                response = get_item(payload['task_id'], payload['shift_id'])
             else:
                 response = query_all(payload['task_id'])
             return respond(None, response)
-            
+
         # POST Method
         if operation == "POST":
             if 'shifts_in_batch' in payload:
@@ -319,7 +319,7 @@ def handle_request(event, payload):
                     for i in payload['shifts_in_batch']:
                         batch.put_item(Item=i)
                 response = 'Successfully written to database'
-            
+
             elif 'get_availability_by_shifts' in payload:
                 print('Inside get_availability_by_shifts')
                 batch_response = []
@@ -334,11 +334,11 @@ def handle_request(event, payload):
                 print(query_response['Items'])
 
                 if 'only_shifts_without_accepted_profiles' in payload:
-                    query_response['Items'] = [ 
-                        item for item in query_response['Items'] 
+                    query_response['Items'] = [
+                        item for item in query_response['Items']
                         if (item.get('accepted_profile_ref') == 'null' or item.get('accepted_profile_ref') == None)
-                    ]                        
-                
+                    ]
+
                 for item in query_response['Items']:
                     new_shift = {
                         "task_id": item['task_id'],
@@ -354,44 +354,44 @@ def handle_request(event, payload):
                         profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
                         other_profiles = worker.get('other_profiles', [])
                         print(f'profile_ref: {profile_ref}, and other_profiles: {other_profiles}')
-                        
+
                         # Query for main profile
                         response = query_filter(
                             partition_key = profile_ref,
-                            attribute_name = 'start_datetime', 
+                            attribute_name = 'start_datetime',
                             attribute_value = search_value,
                             filter_condition = 'between',
                             index_name=index2
                         )
                         shifts = response['Items']
                         print(f'shifts: {shifts}')
-                        
+
                         # Query for all other profiles
                         all_shifts_other_profiles = []
                         for other_profile_ref in other_profiles:
                             response_other_profile = query_filter(
                                 partition_key = other_profile_ref,
-                                attribute_name = 'start_datetime', 
+                                attribute_name = 'start_datetime',
                                 attribute_value = search_value,
                                 filter_condition = 'between',
                                 index_name=index2
-                            ) 
+                            )
                             all_shifts_other_profiles.extend(response_other_profile['Items'])
                             print(f'shifts for {other_profile_ref}: {response_other_profile['Items']}')
-                        
+
                         # Check availability with main profile
                         worker_is_available = is_available(shifts=shifts, new_shift=new_shift)
-                        
+
                         # Check availability with all other profiles
                         all_other_profiles_available = True
                         if other_profiles:
                             all_other_profiles_available = is_available(shifts=all_shifts_other_profiles, new_shift=new_shift)
-                        
+
                         if worker_is_available and all_other_profiles_available:
                             new_shift['available_workers'].append(worker)
-                    
+
                     batch_response.append(new_shift)
-                
+
                 # Check if each available worker has already been invited to another conflicted shift
                 for item in batch_response:
                     initial_search_date = f'{item['start_datetime'][0:10]}T00:00:00+00:00'
@@ -401,7 +401,7 @@ def handle_request(event, payload):
                         profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
                         query_pending_profile = query_filter(
                             partition_key = profile_ref,
-                            attribute_name = 'start_datetime', 
+                            attribute_name = 'start_datetime',
                             attribute_value = search_value,
                             filter_condition = 'between',
                             index_name=index1
@@ -424,9 +424,9 @@ def handle_request(event, payload):
                                     other_profile_ref = f'Professional_{other_worker['worker_professional_id']}' if (other_worker['worker_professional_id'] != 0) else f'Contractor_{other_worker['worker_contractor_id']}'
                                     if other_profile_ref in other_profiles:
                                         other_worker['has_other_invite'] = True
-                    
+
                 response = batch_response
-                
+
             elif 'get_availability' in payload:
                 date = datetime.fromisoformat(payload['initial_date'])
                 slot_size_minutes = int(payload['slot_size_minutes'])
@@ -436,56 +436,56 @@ def handle_request(event, payload):
                 final_response_7days = []
                 for day in range(7):
                     final_response = generate_time_slots_v2(
-                        date_str_utc=date.isoformat(), 
+                        date_str_utc=date.isoformat(),
                         slot_size_minutes=slot_size_minutes,
                     )
                     for worker in my_workforce:
                         profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
                         other_profiles = worker.get('other_profiles', [])
-                        
+
                         # Query for main profile
                         response = query_filter(
                             partition_key = profile_ref,
-                            prefix_sort_key = payload['prefix_shift_id'], 
-                            attribute_name = payload['attribute_name'], 
+                            prefix_sort_key = payload['prefix_shift_id'],
+                            attribute_name = payload['attribute_name'],
                             attribute_value = date.strftime("%Y-%m-%d"),
                             filter_condition = payload['filter_condition'],
                             index_name=index2
                         )
                         shifts = response['Items']
-                        
+
                         # Query for all other profiles
                         all_shifts_other_profiles = []
                         for other_profile_ref in other_profiles:
                             response_other_profile = query_filter(
                                 partition_key = other_profile_ref,
-                                prefix_sort_key = payload['prefix_shift_id'], 
-                                attribute_name = payload['attribute_name'], 
+                                prefix_sort_key = payload['prefix_shift_id'],
+                                attribute_name = payload['attribute_name'],
                                 attribute_value = date.strftime("%Y-%m-%d"),
                                 filter_condition = payload['filter_condition'],
                                 index_name=index2
-                            ) 
+                            )
                             all_shifts_other_profiles.extend(response_other_profile['Items'])
-                        
+
                         for new_shift in final_response:
                             # Check availability with main profile
                             worker_is_available = is_available(shifts=shifts, new_shift=new_shift)
-                            
+
                             # Check availability with all other profiles
                             all_other_profiles_available = True
                             if other_profiles:
                                 all_other_profiles_available = is_available(shifts=all_shifts_other_profiles, new_shift=new_shift)
-                            
+
                             if worker_is_available and all_other_profiles_available:
                                 new_shift['available_workers'].append(worker)
-                    
+
                     final_response_7days.append(final_response)
                     date = date + timedelta(days=1)
                 response = final_response_7days
-            
+
             else:
                 response = table.put_item(Item=payload)
-            
+
             # start_date = get_date_day(payload['start_datetime'])
             # end_date = get_date_day(payload['end_datetime'])
             # if start_date == end_date:
@@ -497,7 +497,7 @@ def handle_request(event, payload):
             #             'end_datetime': payload['end_datetime']
             #         }
             #     )
-            # else: 
+            # else:
             #     with table2.batch_writer() as batch:
             #         batch.put_item(
             #             Item={
@@ -516,7 +516,7 @@ def handle_request(event, payload):
             #             }
             #         )
             return respond(None, response)
-        
+
         # PUT Method
         if operation == "PUT":
             if 'update_shifts_in_batch' in payload:
@@ -524,7 +524,7 @@ def handle_request(event, payload):
                     partition_key=payload['task_id'],
                     prefix_sort_key=payload['prefix_shift_id'],
                     attribute_name=payload['attribute_name'],
-                    attribute_value=payload['attribute_value'], 
+                    attribute_value=payload['attribute_value'],
                     filter_condition=payload['filter_condition']
                 )
                 batch_response = []
@@ -541,9 +541,9 @@ def handle_request(event, payload):
                     partition_key = payload['task_id'],
                     sort_key = payload['shift_id'],
                     update_attributes = payload['update_attributes']
-                )            
+                )
             return respond(None, response)
-        
+
         # DELETE Method
         if operation == "DELETE":
             if 'delete_recurrent_group' in payload:
@@ -551,7 +551,7 @@ def handle_request(event, payload):
                     partition_key=payload['task_id'],
                     prefix_sort_key=payload['prefix_shift_id'],
                     attribute_name=payload['attribute_name'],
-                    attribute_value=payload['attribute_value'], 
+                    attribute_value=payload['attribute_value'],
                     filter_condition=payload['filter_condition']
                 )
                 with table.batch_writer() as batch:
@@ -581,8 +581,8 @@ def handle_request(event, payload):
                     }
                 )
             return respond(None, response)
-            
-            
+
+
 
     except Exception as e:
         return respond(None, f'Exception caught: {e}')

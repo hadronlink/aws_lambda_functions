@@ -60,7 +60,7 @@ def get_secret(secret_name):
             # Handle binary secret if needed
             print(f"Secret '{secret_name}' is not a string. This example expects a string.")
             return json.loads(get_secret_value_response['SecretBinary'].decode('utf-8'))
-  
+
 # Get OpenSearch credentials from Secrets Manager
 opensearch_credentials = get_secret(SECRETS_MANAGER_SECRET_NAME)
 username = opensearch_credentials.get('username')
@@ -68,7 +68,7 @@ password = opensearch_credentials.get('password')
 
 # Use HTTPBasicAuth for username/password authentication
 auth = HTTPBasicAuth(username, password)
-headers = {"Content-Type": "application/json"} 
+headers = {"Content-Type": "application/json"}
 
 # DynamoDB setup
 dynamodb = boto3.resource('dynamodb')
@@ -81,7 +81,7 @@ table_quotes = dynamodb.Table('quotes_dev')
 GEOHASH_PRECISION = 5
 # Approximate distance in meters for different geohash precision levels (for reference)
 # precision 1 ~= 5,000km
-# precision 2 ~= 1,250km  
+# precision 2 ~= 1,250km
 # precision 3 ~= 156km
 # precision 4 ~= 39km
 # precision 5 ~= 4.9km
@@ -206,28 +206,28 @@ def get_professional_by_role_id(role_id):
             KeyConditionExpression=Key('role_id').eq(role_id),
             Limit=1
         )
-        
+
         if not role_response.get('Items'):
             print(f"No role found for role_id: {role_id}")
             return None
-            
+
         role_data = role_response['Items'][0]
         xano_user_type = role_data.get('xano_user_type')
         xano_profile_id = role_data.get('xano_profile_id')
-        
+
         if not xano_user_type or not xano_profile_id:
             print(f"Missing xano_user_type or xano_profile_id for role_id: {role_id}")
             return None
-            
+
         # Step 2: Construct OpenSearch document ID
         opensearch_doc_id = f"{xano_user_type}_{xano_profile_id}"
         print(f"[DEBUG] Looking for professional with document ID: {opensearch_doc_id}")
-        
+
         # Step 3: Get professional from OpenSearch
         profile = get_professional_from_opensearch(opensearch_doc_id)
         print(f"[DEBUG] Found profile: {profile}")
         return profile
-        
+
     except Exception as e:
         print(f"Error getting professional by role_id {role_id}: {e}")
         return None
@@ -239,13 +239,13 @@ def create_item(payload):
         # Generate geohash if coordinates are provided
         if payload.get('latitude') and payload.get('longitude'):
             geohash = geohash2.encode(
-                float(payload['latitude']), 
-                float(payload['longitude']), 
+                float(payload['latitude']),
+                float(payload['longitude']),
                 precision=GEOHASH_PRECISION
             )
         else:
             geohash = None
-            
+
         item = {
             'service_request_id': payload['service_request_id'],
             'homeowner': payload['homeowner'],
@@ -330,7 +330,7 @@ def handle_request(event, payload):
             'body': json.dumps({'error': str(e)})
         }
 
-def handle_get(event, payload):    
+def handle_get(event, payload):
     print('[DEBUG INFO] Calling handle_get function to decide which get to execute')
     try:
         if 'service_request_id' in payload:
@@ -408,7 +408,7 @@ def get_one(service_request_id, event):
                 item['homeowner_name'] = homeowner_item.get('name')
             else:
                 print(f"Warning: No homeowner profile found for role_id: {homeowner_role_id}")
-                item['homeowner_name'] = None 
+                item['homeowner_name'] = None
 
             return {
                 'statusCode': 200,
@@ -431,13 +431,13 @@ def get_all(event, search_query=None, start_date_filter=None, end_date_filter=No
         # Initial scan to get all items
         response = table.scan()
         items = response.get('Items', [])
-        
+
         # Filter by date range if provided
         if start_date_filter or end_date_filter:
             filtered_items = []
             for item in items:
                 created_at = item.get('created_at', '')
-                
+
                 if start_date_filter and end_date_filter:
                     if start_date_filter <= created_at <= end_date_filter:
                         filtered_items.append(item)
@@ -447,9 +447,9 @@ def get_all(event, search_query=None, start_date_filter=None, end_date_filter=No
                 elif end_date_filter:
                     if created_at <= end_date_filter:
                         filtered_items.append(item)
-            
+
             items = filtered_items
-        
+
         # Filter by status if provided, unless the filter is 'All'
         if status_filter:
             if isinstance(status_filter, str) and status_filter.lower() == 'all':
@@ -471,7 +471,7 @@ def get_all(event, search_query=None, start_date_filter=None, end_date_filter=No
         # Filter and sort by search query if provided
         if search_query:
             search_results = []
-            
+
             for item in items:
                 # Collect themes from all languages
                 themes = item.get('SR_projects_themes', {})
@@ -493,10 +493,10 @@ def get_all(event, search_query=None, start_date_filter=None, end_date_filter=No
 
                 print(f'[DEBUG INFO] Searchable text: {searchable_text}')
 
-                
+
                 if search_query.lower() in searchable_text:
                     search_results.append(item)
-            
+
             items = search_results
 
         if items:
@@ -507,7 +507,7 @@ def get_all(event, search_query=None, start_date_filter=None, end_date_filter=No
                         if professional_data:
                             chat['professional_name'] = professional_data.get('name', '')
                             chat['professional_profile_image_complete_path'] = professional_data.get('profile_image_complete_path', '')
-                            
+
         return {
             'statusCode': 200,
             'body': json.dumps(items, default=dynamo_json_serializer)
@@ -528,13 +528,13 @@ def get_by_homeowner(homeowner, event, search_query=None, start_date_filter=None
             KeyConditionExpression=boto3.dynamodb.conditions.Key('homeowner').eq(homeowner)
         )
         items = response.get('Items', [])
-        
+
         # Filter by date range if provided
         if start_date_filter or end_date_filter:
             filtered_items = []
             for item in items:
                 created_at = item.get('created_at', '')
-                
+
                 if start_date_filter and end_date_filter:
                     if start_date_filter <= created_at <= end_date_filter:
                         filtered_items.append(item)
@@ -544,7 +544,7 @@ def get_by_homeowner(homeowner, event, search_query=None, start_date_filter=None
                 elif end_date_filter:
                     if created_at <= end_date_filter:
                         filtered_items.append(item)
-            
+
             items = filtered_items
 
         # Filter by status if provided, unless the filter is 'All'
@@ -568,13 +568,13 @@ def get_by_homeowner(homeowner, event, search_query=None, start_date_filter=None
         # Filter and sort by search query if provided
         if search_query:
             search_results = []
-            
+
             for item in items:
                 searchable_text = f"{item.get('title', '')} {item.get('description', '')} {item.get('city', '')}".lower()
-                
+
                 if search_query.lower() in searchable_text:
                     search_results.append(item)
-            
+
             items = search_results
 
         if items:
@@ -603,25 +603,25 @@ def get_by_homeowner(homeowner, event, search_query=None, start_date_filter=None
 def get_concluded_not_reviewed(when_ask_again_list=None):
     print('[DEBUG INFO] Getting concluded service requests not yet reviewed by homeowner...')
     try:
-        
+
         # Default to empty list if not provided
         if when_ask_again_list is None:
             when_ask_again_list = []
-        
+
         # Get current date for calculating days difference
         today = datetime.datetime.now().date()
         today_str = today.strftime('%Y-%m-%d')
-        
+
         # Query the GSI for concluded but not reviewed items
         response = table.query(
             IndexName='concluded_not_reviewed-index',
             KeyConditionExpression=Key('status').eq('Completed') & Key('pro_already_reviewed').eq('False'),
             FilterExpression=Attr('selected_professional').ne('') # a professional is assigned
         )
-        
+
         result_items = []
         items = response['Items']
-        
+
         # Handle pagination if there are more items
         while 'LastEvaluatedKey' in response:
             response = table.query(
@@ -630,7 +630,7 @@ def get_concluded_not_reviewed(when_ask_again_list=None):
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )
             items.extend(response['Items'])
-        
+
         # For each service request, get the homeowner details from roles table
         for item in items:
             service_data = {
@@ -639,7 +639,7 @@ def get_concluded_not_reviewed(when_ask_again_list=None):
                 'professional_name': item.get('professional_name'),
                 'homeowner_asked_to_review_date': item.get('homeowner_asked_to_review_date', '')
             }
-            
+
             # Check if homeowner_asked_to_review_date is empty
             if not service_data['homeowner_asked_to_review_date']:
                 days_since_asked = 0
@@ -656,9 +656,9 @@ def get_concluded_not_reviewed(when_ask_again_list=None):
                 except ValueError:
                     days_since_asked = 0
                     should_include = True
-            
+
             service_data['days_since_asked_to_review'] = days_since_asked
-            
+
             # Only proceed if we should include this service
             if should_include:
                 # Get homeowner data from roles table
@@ -666,20 +666,20 @@ def get_concluded_not_reviewed(when_ask_again_list=None):
                     try:
                         homeowner = item.get('homeowner')
                         print(f'[DEBUG] Querying for homeowner ID: {homeowner}')
-                        
+
                         # Query the roles table to get homeowner details
                         homeowner_response = table_roles.query(
                             IndexName='role_id-index',
                             KeyConditionExpression=Key('role_id').eq(homeowner),
                             Limit=1
                         )
-                        
+
                         homeowner_items = homeowner_response.get('Items', [])
                         print(f'[DEBUG] Homeowner items found: {len(homeowner_items)}')
-                        
+
                         if homeowner_items:
                             homeowner_data = homeowner_items[0]
-                            
+
                             # Add homeowner details to service_data
                             service_data.update({
                                 'homeowner_name': homeowner_data.get('name', ''),
@@ -706,7 +706,7 @@ def get_concluded_not_reviewed(when_ask_again_list=None):
                     print(f'[ERROR] Failed to update homeowner_asked_to_review_date: {str(e)}')
 
                 result_items.append(service_data)
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps({'data': result_items})
@@ -724,15 +724,15 @@ def get_in_progress_with_expired_deadline():
         # Get current date for comparison
         today = datetime.datetime.now().date()
         today_str = today.strftime('%Y-%m-%d')
-        
+
         # We need to scan the table since we can't query directly for "less than" conditions on GSI
         response = table.scan(
             FilterExpression=Attr('status').eq('InProgress') & Attr('desired_deadline').lt(today_str)
         )
-        
+
         result_items = []
         items = response['Items']
-        
+
         # Handle pagination if there are more items
         while 'LastEvaluatedKey' in response:
             response = table.scan(
@@ -740,7 +740,7 @@ def get_in_progress_with_expired_deadline():
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )
             items.extend(response['Items'])
-        
+
         # For each service request, get the homeowner details from roles table
         for item in items:
             service_data = {
@@ -749,26 +749,26 @@ def get_in_progress_with_expired_deadline():
                 'professional_name': item.get('professional_name'),
                 'desired_deadline': item.get('desired_deadline', '')
             }
-            
+
             # Get homeowner data from roles table
             if item.get('homeowner'):
                 try:
                     homeowner = item.get('homeowner')
                     print(f'[DEBUG] Querying for homeowner ID: {homeowner}')
-                    
+
                     # Query the roles table to get homeowner details
                     homeowner_response = table_roles.query(
                         IndexName='role_id-index',
                         KeyConditionExpression=Key('role_id').eq(homeowner),
                         Limit=1
                     )
-                    
+
                     homeowner_items = homeowner_response.get('Items', [])
                     print(f'[DEBUG] Homeowner items found: {len(homeowner_items)}')
-                    
+
                     if homeowner_items:
                         homeowner_data = homeowner_items[0]
-                        
+
                         # Add homeowner details to service_data as required
                         service_data.update({
                             'homeowner_name': homeowner_data.get('name', ''),
@@ -780,9 +780,9 @@ def get_in_progress_with_expired_deadline():
                         print(f'[WARNING] No homeowner data found for ID: {homeowner}')
                 except Exception as e:
                     print(f'[ERROR] Failed to get homeowner data: {str(e)}')
-            
+
             result_items.append(service_data)
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps({'data': result_items})
@@ -824,21 +824,21 @@ def update_item(payload):
             }
         existing_item = current_response['Item']
         print(f'[DEBUG INFO] Existing service request: {existing_item}')
-        
+
         # Determine the new status from the payload
         new_status = payload.get('status')
-        
+
         # Initialize a list to store cancelled appointment IDs
         cancelled_appointment_info = []
 
         # ---------------------------------------------------------------------
         # --- Conditional updates based on the SR status change ---
         # ---------------------------------------------------------------------
-        
+
         # Case 1: Status change to 'InProgress', 'Reviewed', or 'Completed'
         if new_status in ['InProgress', 'Reviewed', 'Completed']:
             selected_professional_id = payload.get('selected_professional')
-            
+
             # Check if a selected professional is provided, otherwise use the existing one.
             if not selected_professional_id:
                 existing_professional = existing_item.get('selected_professional')
@@ -860,13 +860,13 @@ def update_item(payload):
                 ExpressionAttributeNames={'#s': 'status'},
                 ExpressionAttributeValues={':s': new_status, ':sp': selected_professional_id}
             )
-            
+
             # Process all related chats
             chats = existing_item.get('chats', [])
             for chat in chats:
                 chat_id = chat['chat_id']
                 professional_in_chat = chat['professional']
-                
+
                 if professional_in_chat == selected_professional_id:
                     # Update the winning chat (chat_status = 'Open')
                     print(f'Processing winning chat: {chat_id}')
@@ -876,7 +876,7 @@ def update_item(payload):
                         ExpressionAttributeNames={'#cs': 'chat_status'},
                         ExpressionAttributeValues={':cs': 'Open'}
                     )
-                    
+
                     # If only one quote exists in the winning chat, approve it
                     quotes_in_chat = chat.get('quotes', [])
                     if len(quotes_in_chat) == 1:
@@ -897,7 +897,7 @@ def update_item(payload):
                         ExpressionAttributeNames={'#cs': 'chat_status'},
                         ExpressionAttributeValues={':cs': 'Closed', ':sd': 'related quotes not selected'}
                     )
-                    
+
                     # Update all quotes in the other chats (status = 'Closed')
                     quotes_in_chat = chat.get('quotes', [])
                     for quote in quotes_in_chat:
@@ -909,7 +909,7 @@ def update_item(payload):
                             ExpressionAttributeNames={'#qs': 'status', '#qsd': 'status_detail'},
                             ExpressionAttributeValues={':qs': 'Closed', ':qsd': 'not selected'}
                         )
-        
+
         # Case 2: Status change to 'Cancelled'
         elif new_status == 'Cancelled':
             # Update the services_requests_dev table
@@ -920,14 +920,14 @@ def update_item(payload):
                 ExpressionAttributeNames={'#s': 'status'},
                 ExpressionAttributeValues={':s': 'Cancelled'}
             )
-            
+
             # Update all related chats AND quotes AND future appointments
             print('Updating all related chats, quotes, and appointments...')
             chats = existing_item.get('chats')
             print(f'Chats: {chats}')
             for chat in chats:
                 chat_id = chat['chat_id']
-                
+
                 # Update chat status
                 table_chats.update_item(
                     Key={'chat_id': chat_id},
@@ -943,7 +943,7 @@ def update_item(payload):
                 if 'Item' in chats_response:
                     existing_chat = chats_response['Item']
                     print(f'[DEBUG INFO] Processing chat: {existing_chat}')
-                
+
                     # Update all quotes in this chat
                     quotes_in_chat = existing_chat.get('quotes', [])
                     print(f'[DEBUG INFO] Quotes in chat: {quotes_in_chat}')
@@ -971,11 +971,11 @@ def update_item(payload):
                             # Combine date and time strings
                             appointment_datetime_str = f"{appointment_date_str} {appointment_time_str}"
                             print(f'[DEBUG INFO] Combined datetime string: {appointment_datetime_str}')
-                            
+
                             # Parse the combined datetime string
                             appointment_datetime = datetime.datetime.fromisoformat(appointment_datetime_str)
                             print(f'[DEBUG INFO] Appointment datetime: {appointment_datetime}')
-                            
+
                             if appointment_datetime > datetime.datetime.now():
                                 print(f'[DEBUG INFO] Appointment {appointment["appointment_id"]} is in the future.')
 
@@ -1026,7 +1026,7 @@ def update_item(payload):
                                 cancelled_appointment_info.append(appointment_body)
                             else:
                                 print(f'[DEBUG INFO] Appointment {appointment["appointment_id"]} is in the past.')
-                            
+
         # Case 3: Status change to 'OnHold'
         elif new_status == 'OnHold':
             # Only update the services_requests_dev table
@@ -1043,15 +1043,15 @@ def update_item(payload):
         # ---------------------------------------------------------------------
 
         # Update location information and geohash if coordinates changed
-        if ('latitude' in payload and 'longitude' in payload and 
-            (existing_item.get('latitude') != payload['latitude'] or 
+        if ('latitude' in payload and 'longitude' in payload and
+            (existing_item.get('latitude') != payload['latitude'] or
              existing_item.get('longitude') != payload['longitude'])):
-            
+
             # Generate new geohash
             try:
                 geohash = geohash2.encode(
-                    float(payload['latitude']), 
-                    float(payload['longitude']), 
+                    float(payload['latitude']),
+                    float(payload['longitude']),
                     precision=GEOHASH_PRECISION
                 )
                 payload['geohash'] = geohash
@@ -1108,7 +1108,7 @@ def update_item(payload):
 
             payload['lead_for_professionals'] = updated_leads
             del payload['leads_action']
-        
+
         # Build update expression for all other fields
         update_expression = 'SET '
         expression_attribute_values = {}
@@ -1123,7 +1123,7 @@ def update_item(payload):
                 expression_attribute_names[f'#{key}'] = key
 
         update_expression = update_expression.rstrip(', ')
-        
+
         # Final update to the SR item for all other changes
         if update_expression != 'SET':
             update_kwargs = {
@@ -1137,7 +1137,7 @@ def update_item(payload):
                 update_kwargs['ExpressionAttributeNames'] = expression_attribute_names
 
             table.update_item(**update_kwargs)
-        
+
         # --- Update the return body to include cancelled appointments ---
         body = {'message': 'Item updated successfully'}
         if cancelled_appointment_info:
@@ -1247,7 +1247,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
             'statusCode': 404,
             'body': json.dumps({'error': 'Service request not found'})
         }
-    
+
     service_request = service_request_response['Item']
 
     try:
@@ -1274,18 +1274,18 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Homeowner not found'})
             }
-        
+
         homeowner_info = homeowner_response['Item']
         homeowner_email = homeowner_info.get('email')
 
         # Check if we have specific professionals to analyze
         specific_professionals = []
-        
+
         # Add selected_professional if it exists and is not empty
         if sr_selected_professional and sr_selected_professional.strip():
             specific_professionals.append(sr_selected_professional.strip())
             print(f'[DEBUG] Added selected_professional: {sr_selected_professional}')
-        
+
         # Handle lead_for_professionals based on list size
         if sr_lead_for_professionals and len(sr_lead_for_professionals) > 0:
             if len(sr_lead_for_professionals) == 1:
@@ -1305,10 +1305,10 @@ def find_matching_professionals(service_request_id, max_recommended_professional
         # return that professional immediately with default info
         if (not sr_selected_professional or not sr_selected_professional.strip()) and \
            sr_lead_for_professionals and len(sr_lead_for_professionals) == 1:
-            
+
             prof_id = sr_lead_for_professionals[0].strip()
             print(f'[DEBUG] Returning single lead_for_professional immediately: {prof_id}')
-            
+
             try:
                 # Query OpenSearch for this specific professional
                 opensearch_payload = {
@@ -1319,9 +1319,9 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                     },
                     "size": 1
                 }
-                
+
                 response_hits = query_opensearch(opensearch_payload)
-                
+
                 if response_hits and len(response_hits) > 0:
                     hit = response_hits[0]
                     professional = hit.get('_source', {}).get('doc')
@@ -1330,7 +1330,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                         distance_meters = None
                         prof_latitude = professional.get('latitude')
                         prof_longitude = professional.get('longitude')
-                        
+
                         if (sr_latitude and sr_longitude and prof_latitude and prof_longitude):
                             try:
                                 distance_meters = calculate_distance(
@@ -1341,7 +1341,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                             except (ValueError, TypeError) as e:
                                 print(f'[DEBUG] Error calculating distance for single lead: {e}')
                                 distance_meters = None
-                        
+
                         matching_professional = {
                             'name': professional.get('name', ''),
                             'email': professional.get('email', ''),
@@ -1358,20 +1358,20 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                             'projects_themes_list': professional.get('projects_themes_list', {}),
                             'open_to_work': professional.get('open_to_work', False)
                         }
-                        
+
                         print(f'[DEBUG] Returning single lead professional: {professional.get("email", "unknown")}')
                         return {
                             'statusCode': 200,
                             'body': json.dumps([matching_professional])
                         }
-                
+
                 # If professional not found, return empty list
                 print(f'[DEBUG] Single lead professional not found: {prof_id}')
                 return {
                     'statusCode': 200,
                     'body': json.dumps([])
                 }
-                
+
             except Exception as e:
                 print(f"[ERROR] Failed to retrieve single lead professional {prof_id}: {str(e)}")
                 return {
@@ -1415,9 +1415,9 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                         },
                         "size": 1
                     }
-                    
+
                     response_hits = query_opensearch(opensearch_payload)
-                    
+
                     if response_hits and len(response_hits) > 0:
                         hit = response_hits[0]
                         professional = hit.get('_source', {}).get('doc')
@@ -1426,7 +1426,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                             distance_meters = None
                             prof_latitude = professional.get('latitude')
                             prof_longitude = professional.get('longitude')
-                            
+
                             if (sr_latitude and sr_longitude and prof_latitude and prof_longitude):
                                 try:
                                     distance_meters = calculate_distance(
@@ -1437,7 +1437,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                                 except (ValueError, TypeError) as e:
                                     print(f'[DEBUG] Error calculating distance for {prof_id}: {e}')
                                     distance_meters = None
-                            
+
                             matching_professional = {
                                 'name': professional.get('name', ''),
                                 'email': professional.get('email', ''),
@@ -1456,7 +1456,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                             }
                             matching_professionals.append(matching_professional)
                             print(f'[DEBUG] Added specific professional: {professional.get("email", "unknown")}')
-                            
+
                 except Exception as e:
                     print(f"[ERROR] Failed to retrieve professional {prof_id}: {str(e)}")
                     continue
@@ -1488,7 +1488,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
 
         # Build the search query string from service request data
         search_terms = []
-        
+
         # Extract terms from trades (all languages) - prioritize these
         trade_terms = []
         if isinstance(sr_trades, dict):
@@ -1497,7 +1497,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                     trade_terms.extend([term.strip() for term in lang_terms if term and term.strip()])
                 elif lang_terms:
                     trade_terms.append(str(lang_terms).strip())
-        
+
         # Extract terms from themes (all languages) - prioritize these
         theme_terms = []
         if isinstance(sr_projects_themes, dict):
@@ -1506,7 +1506,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                     theme_terms.extend([term.strip() for term in lang_terms if term and term.strip()])
                 elif lang_terms:
                     theme_terms.append(str(lang_terms).strip())
-        
+
         # Add key terms from title and description (extract meaningful words)
         title_words = []
         description_words = []
@@ -1517,17 +1517,17 @@ def find_matching_professionals(service_request_id, max_recommended_professional
             # Extract meaningful words from description (limit to avoid very long queries)
             desc_words = [word for word in sr_description.split() if len(word) > 2 and word.lower() not in ['the', 'and', 'for', 'with', 'some', 'have', 'need', 'fix', 'issues']]
             description_words = desc_words[:10]  # Limit to first 10 meaningful words
-        
+
         # Build prioritized search terms (trades and themes first, then title/description)
         search_terms = trade_terms + theme_terms + title_words + description_words
-        
+
         # Limit total terms to avoid very long queries (OpenSearch works better with focused queries)
         if len(search_terms) > 20:
             search_terms = search_terms[:20]
-        
+
         # Create the multi_match query string
         query_string = ' '.join(search_terms) if search_terms else 'professional service'
-        
+
         print(f'[DEBUG] Trade terms: {trade_terms}')
         print(f'[DEBUG] Theme terms: {theme_terms}')
         print(f'[DEBUG] Title words: {title_words}')
@@ -1559,7 +1559,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
         # Add geographic filtering if location data and max_distance_in_meters are provided
         if max_distance_in_meters and sr_lat_float is not None and sr_lon_float is not None:
             geo_filters = []
-            
+
             # Calculate geohash prefix for filtering to narrow down search space
             if sr_geohash:
                 max_distance_km = max_distance_in_meters / 1000.0
@@ -1573,16 +1573,16 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                     prefix_length = 4
                 else:
                     prefix_length = 5
-                
+
                 geohash_prefix = sr_geohash[:prefix_length]
-                
+
                 geo_filters.append({
                     "prefix": {
                         "doc.geohash": geohash_prefix
                     }
                 })
                 print(f'[DEBUG] Added geohash prefix filter: "{geohash_prefix}"')
-            
+
             # Add geo_distance filter to find professionals within the specified radius
             geo_filters.append({
                 "geo_distance": {
@@ -1594,7 +1594,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                 }
             })
             print(f'[DEBUG] Added geo_distance filter: {max_distance_in_meters}m from ({sr_lat_float}, {sr_lon_float})')
-            
+
             # This 'filter' clause is added to the 'bool' query when geographic data is available
             opensearch_payload["query"]["bool"]["filter"] = [
                 {
@@ -1639,7 +1639,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
         ]
         # At least one 'should' clause must match
         opensearch_payload["query"]["bool"]["minimum_should_match"] = 1
-            
+
         print(f'[DEBUG] Final OpenSearch payload: {json.dumps(opensearch_payload, ensure_ascii=False, indent=2)}')
 
         # Execute OpenSearch query
@@ -1655,7 +1655,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
 
         # Process results
         matching_professionals = []
-        
+
         for i, hit in enumerate(response_hits):
             professional = hit.get('_source', {}).get('doc')
             if not professional:
@@ -1713,22 +1713,22 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                     },
                     "size": 1
                 }
-                
+
                 include_response_hits = query_opensearch(opensearch_payload_include)
-                
+
                 if include_response_hits and len(include_response_hits) > 0:
                     hit = include_response_hits[0]
                     professional = hit.get('_source', {}).get('doc')
                     if professional:
                         # Check if this professional is already in the list
                         already_included = any(p.get('role_id_on_dynamo') == include_pro for p in matching_professionals)
-                        
+
                         if not already_included:
                             # Calculate distance if coordinates are available
                             distance_meters = None
                             prof_latitude = professional.get('latitude')
                             prof_longitude = professional.get('longitude')
-                            
+
                             if (sr_latitude and sr_longitude and prof_latitude and prof_longitude):
                                 try:
                                     distance_meters = calculate_distance(
@@ -1739,7 +1739,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                                 except (ValueError, TypeError) as e:
                                     print(f'[DEBUG] Error calculating distance for include_pro: {e}')
                                     distance_meters = None
-                            
+
                             # Skip if professional has same email as homeowner
                             if professional.get('email', '') != homeowner_email:
                                 matching_professional = {
@@ -1761,7 +1761,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                                     'projects_themes_list': professional.get('projects_themes_list', {}),
                                     'open_to_work': professional.get('open_to_work', False)
                                 }
-                                
+
                                 matching_professionals.append(matching_professional)
                                 print(f'[DEBUG] Added include_pro professional: {professional.get("email", "unknown")}')
                             else:
@@ -1770,7 +1770,7 @@ def find_matching_professionals(service_request_id, max_recommended_professional
                             print(f'[DEBUG] include_pro professional already in results: {include_pro}')
                 else:
                     print(f'[DEBUG] include_pro professional not found: {include_pro}')
-                    
+
             except Exception as e:
                 print(f"[ERROR] Failed to retrieve include_pro professional {include_pro}: {str(e)}")
 
@@ -1818,7 +1818,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Professional profile not found'})
             }
-        
+
         # Extract profile data for distance calculations and other logic
         profile_latitude = profile.get('latitude')
         profile_longitude = profile.get('longitude')
@@ -1826,14 +1826,14 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
         profile_country = profile.get('country')
         credits_balance = profile.get('credits_balance', 0)
         credits_balance = int(credits_balance)
-        
+
         use_miles = (profile_country == 'US')
         distance_unit = 'mi' if use_miles else 'km'
         print(f"[DEBUG] Professional country: {profile_country}, using {distance_unit}")
         print(f'Professional credits balance: {credits_balance}')
 
         pro_id = pro
-        
+
         # Query for pro profile in Dynamo table 'roles'
         pro_role_response = table_roles.query(
             IndexName='role_id-index',
@@ -1850,24 +1850,24 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
             print(f"Warning: No pro profile found for role_id: {pro_id}")
             pro_blocked_list = []
 
-        print(f'[DEBUG] Professional blocked_list: {pro_blocked_list}')        
+        print(f'[DEBUG] Professional blocked_list: {pro_blocked_list}')
 
 
         # Build filter expression based on status requirements
         items = []
 
         print(f"[DEBUG] Status filter to check: {status_filter}")
-        
+
         if status_filter == 'All':
             # Get all SRs with status InProgress, Complete, Reviewed, and Open (with requisites fulfilled)
             statuses_to_check = ['Open', 'InProgress', 'Complete', 'Reviewed']
         else:
             # Get SRs with specific status (with requisites fulfilled)
             statuses_to_check = [status_filter] if status_filter else ['Open', 'InProgress', 'Complete', 'Reviewed']
-        
+
         for status in statuses_to_check:
             print(f"[DEBUG] Checking status: {status}")
-            
+
             # Query based on status requisites
             if status == 'Open':
                 # SR status==Open and (selected_pro == pro_id) or (pro_id in lead_for_professionals) or (lead_for_professionals is empty)
@@ -1881,28 +1881,28 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
             elif status == 'InProgress':
                 # SR status==InProgress and selected_pro == pro_id
                 response = table.scan(
-                    FilterExpression=boto3.dynamodb.conditions.Attr('status').eq('InProgress') & 
+                    FilterExpression=boto3.dynamodb.conditions.Attr('status').eq('InProgress') &
                     boto3.dynamodb.conditions.Attr('selected_professional').eq(pro_id)
                 )
             elif status == 'Complete':
                 # SR status==Complete and selected_pro == pro_id
                 response = table.scan(
-                    FilterExpression=boto3.dynamodb.conditions.Attr('status').eq('Complete') & 
+                    FilterExpression=boto3.dynamodb.conditions.Attr('status').eq('Complete') &
                     boto3.dynamodb.conditions.Attr('selected_professional').eq(pro_id)
                 )
             elif status == 'Reviewed':
                 # SR status==Reviewed and selected_pro == pro_id
                 response = table.scan(
-                    FilterExpression=boto3.dynamodb.conditions.Attr('status').eq('Reviewed') & 
+                    FilterExpression=boto3.dynamodb.conditions.Attr('status').eq('Reviewed') &
                     boto3.dynamodb.conditions.Attr('selected_professional').eq(pro_id)
                 )
-            
+
             status_items = response.get('Items', [])
             print(f"Found {len(status_items)} items for status: {status}")
             items.extend(status_items)
-        
+
         print(f"Total items before filtering: {len(items)}")
-        
+
         unique_items = {}
 
         for item in items:
@@ -1921,7 +1921,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 homeowner_blocked_list = homeowner.get('blocked_list')
             else:
                 print(f"Warning: No homeowner profile found for role_id: {homeowner_id}")
-                item['homeowner_name'] = None 
+                item['homeowner_name'] = None
 
             print(f'[DEBUG] Homeowner blocked_list: {homeowner_blocked_list}')
 
@@ -1930,7 +1930,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 # Remove duplicates based on service_request_id
                 service_request_id = item.get('service_request_id')
                 if service_request_id not in unique_items:
-                    unique_items[service_request_id] = item    
+                    unique_items[service_request_id] = item
 
         items = list(unique_items.values())
         print(f"Items after removing blocked list and deduplication: {len(items)}")
@@ -1944,7 +1944,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
             filtered_items = []
             for item in items:
                 created_at = item.get('created_at', '')
-                
+
                 if start_date_filter and end_date_filter:
                     if start_date_filter <= created_at <= end_date_filter:
                         filtered_items.append(item)
@@ -1954,15 +1954,15 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 elif end_date_filter:
                     if created_at <= end_date_filter:
                         filtered_items.append(item)
-            
+
             items = filtered_items
-        
+
         print(f"[DEBUG] Query search filter to be applied: {search_query}")
 
         # Filter and sort by search query if provided
         if search_query:
             search_results = []
-            
+
             for item in items:
                 # Collect themes from all languages
                 themes = item.get('SR_projects_themes', {})
@@ -1984,16 +1984,16 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
 
                 print(f'[DEBUG INFO] Searchable text: {searchable_text}')
 
-                
+
                 if search_query.lower() in searchable_text:
                     search_results.append(item)
-            
+
             items = search_results
 
         # Extract profile IDs for matching
         profile_trades_ids = profile.get('trades_id', [])
         profile_projects_themes_id = profile.get('dict_projects_themes_id', [])
-        
+
         print(f"[DEBUG] Professional trades IDs: {profile_trades_ids}")
         print(f"[DEBUG] Professional projects themes IDs: {profile_projects_themes_id}")
 
@@ -2012,34 +2012,34 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 for chat in item['chats']:
                     if 'created_at_timestamp' in chat and isinstance(chat['created_at_timestamp'], Decimal):
                         chat['created_at_timestamp'] = int(chat['created_at_timestamp'])
-            
+
             # Check for theme or trade coincidence
             item_trades_ids = item.get('SR_trades_ids', [])
             item_projects_themes_ids = item.get('SR_projects_themes_ids', [])
-            
+
             # Convert to sets and check for intersection
             profile_trades_set = set(profile_trades_ids) if profile_trades_ids else set()
             profile_themes_set = set(profile_projects_themes_id) if profile_projects_themes_id else set()
             item_trades_set = set(item_trades_ids) if item_trades_ids else set()
             item_themes_set = set(item_projects_themes_ids) if item_projects_themes_ids else set()
-            
+
             # Check if there's any intersection between professional and service request
             trades_match = bool(profile_trades_set.intersection(item_trades_set))
             themes_match = bool(profile_themes_set.intersection(item_themes_set))
-            
+
             item['theme_or_trade_coincidence'] = trades_match or themes_match
-            
+
             print(f"[DEBUG] Item {item.get('service_request_id')}: trades_match={trades_match}, themes_match={themes_match}, coincidence={item['theme_or_trade_coincidence']}")
             if item['theme_or_trade_coincidence']:
                 print(f"[DEBUG] Matching trades: {profile_trades_set.intersection(item_trades_set)}")
                 print(f"[DEBUG] Matching themes: {profile_themes_set.intersection(item_themes_set)}")
-            
+
             # Calculate distance
             item_geohash = item.get('geohash')
             item_latitude = item.get('latitude')
             item_longitude = item.get('longitude')
             max_distance_in_meters = item.get('max_distance_in_meters')
-            
+
             # Set default max distance if not specified (1000km = 1,000,000 meters)
             if not max_distance_in_meters or max_distance_in_meters == '':
                 max_distance_limit = 1000000  # 1000km default
@@ -2054,7 +2054,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 try:
                     # Use geohash for optimization - only calculate exact distance if potentially within range
                     should_calculate_exact = True
-                    
+
                     if profile_geohash and item_geohash:
                         # Quick geohash check for very distant locations
                         common_prefix_length = 0
@@ -2063,28 +2063,28 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                                 common_prefix_length += 1
                             else:
                                 break
-                        
-                        # If geohash suggests very distant (less than 3 common chars), 
+
+                        # If geohash suggests very distant (less than 3 common chars),
                         # and max_distance is small, skip exact calculation for performance
                         if common_prefix_length < 3 and max_distance_limit < 100000:  # Less than 100km
                             should_calculate_exact = False
                             distance_meters = float('inf')  # Will be filtered out anyway
                             print(f"[DEBUG] Skipped exact calculation for distant item {item.get('service_request_id')} (geohash optimization)")
-                    
+
                     if should_calculate_exact:
                         # calculate_distance returns KILOMETERS, so convert to meters
                         distance_km = calculate_distance(
                             float(profile_latitude), float(profile_longitude),
                             float(item_latitude), float(item_longitude)
                         )
-                        
+
                         if distance_km is not None:
                             distance_meters = distance_km * 1000  # Convert km to meters
                             print(f"[DEBUG] Calculated distance for item {item.get('service_request_id')}: {distance_km}km = {distance_meters}m")
                         else:
                             distance_meters = float('inf')
                             print(f"[DEBUG] calculate_distance returned None for item {item.get('service_request_id')}")
-                
+
                 except (ValueError, TypeError) as e:
                     print(f"[DEBUG] Error calculating distance for item {item.get('service_request_id')}: {e}")
                     distance_meters = float('inf')
@@ -2106,7 +2106,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                     distance_unit_str = 'km'
                     # Remove trailing zeros: 15.100km -> 15.1km, 1.000km -> 1km
                     item['distance_display'] = f"{distance_value:.3f}".rstrip('0').rstrip('.') + distance_unit_str
-                
+
                 item['distance'] = distance_meters
             else:
                 item['distance'] = float('inf')
@@ -2133,11 +2133,11 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                     item['chat_started'] = True
                     item['chat_id'] = chat.get('chat_id', None)
                     break
-        
+
         # Remove items that exceed max_distance_in_meters or have invalid distances
         items = [item for item in items if not item.get('_should_remove', False)]
         print(f"Items after max distance filtering: {len(items)}")
-        
+
         # Sort by chat status first, then theme/trade coincidence, then by distance within each group
         def sort_key(item):
             # Primary sort: chat started (True first)
@@ -2146,56 +2146,56 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
             chat_started = item.get('chat_started', False)
             coincidence = item.get('theme_or_trade_coincidence', False)
             distance = item.get('distance', float('inf'))
-            
+
             # Create sorting tuple:
             # - not chat_started: False (0) for items with chat, True (1) for items without chat
             # - not coincidence: False (0) for items with coincidence, True (1) for items without
             # - distance: ascending order
             return (not chat_started, not coincidence, distance)
-        
+
         items.sort(key=sort_key)
-        
+
         # Debug logging for sorted order
         chat_started_count = sum(1 for item in items if item.get('chat_started', False))
         coincidence_count = sum(1 for item in items if item.get('theme_or_trade_coincidence', False) and not item.get('chat_started', False))
         other_count = len(items) - chat_started_count - coincidence_count
-        
+
         print(f"[DEBUG] Sorted items: {chat_started_count} with chat started, {coincidence_count} with theme/trade coincidence (no chat), {other_count} others")
         for i, item in enumerate(items[:10]):  # Log first 10 items
             chat_started = item.get('chat_started', False)
             coincidence = item.get('theme_or_trade_coincidence', False)
             distance = item.get('distance', 'inf')
             print(f"[DEBUG] Item {i+1}: {item.get('service_request_id')} - chat: {chat_started}, coincidence: {coincidence}, distance: {distance}")
-        
-        
+
+
         # Process items for credits and final output
         final_output_items = []
         for item in items:
             credits_required = item.get('credits_required', 0)
             print(f"Credits required for {item.get('service_request_id')}: {credits_required}")
-            
+
             if credits_balance < credits_required:
                 print(f"Insufficient credits for {item.get('service_request_id')}")
                 item['insufficient_credits'] = True
             else:
                 item['insufficient_credits'] = False
                 print(f"Sufficient credits for {item.get('service_request_id')}")
-            
+
             # Update views count
             try:
                 update_views_count(item['service_request_id'])
             except Exception as e:
                 print(f"Error updating views_count for {item['service_request_id']}: {e}")
-            
+
             # Remove the temporary marker
             if '_should_remove' in item:
                 del item['_should_remove']
-            
+
             final_output_items.append(item)
-        
+
         print(f"[DEBUG INFO] Returning {len(final_output_items)} items")
         print(f"[DEBUG INFO] End of get_by_pro processing")
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -2203,7 +2203,7 @@ def get_by_pro(pro, search_query=None, start_date_filter=None, end_date_filter=N
                 'credits_balance': credits_balance
             }, default=str)
         }
-        
+
     except Exception as e:
         print(f"[ERROR] Error in get_by_pro: {e}")
         import traceback

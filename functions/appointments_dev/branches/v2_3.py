@@ -1,5 +1,4 @@
 import boto3
-import uuid
 import datetime
 from boto3.dynamodb.conditions import Key
 import json
@@ -7,7 +6,6 @@ import base64
 import os
 from google.oauth2 import service_account
 from google.cloud import storage
-import tempfile
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
@@ -31,7 +29,7 @@ chats_table = dynamodb.Table('chats_dev')
 roles_table = dynamodb.Table('roles_dev')
 
 def handle_request(event, payload):
-    """Main entry point for dev branch"""
+
     operation = event.get('httpMethod')
     print(f"[DEBUG] Operation: {operation}")
     print(f"[DEBUG] Event: {json.dumps(event, default=str)}")

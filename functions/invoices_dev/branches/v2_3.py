@@ -160,7 +160,7 @@ def get_secret(secret_name):
             # Handle binary secret if needed
             print(f"Secret '{secret_name}' is not a string. This example expects a string.")
             return json.loads(get_secret_value_response['SecretBinary'].decode('utf-8'))
-  
+
 # Get OpenSearch credentials from Secrets Manager
 opensearch_credentials = get_secret(SECRETS_MANAGER_SECRET_NAME)
 username = opensearch_credentials.get('username')
@@ -168,7 +168,71 @@ password = opensearch_credentials.get('password')
 
 # Use HTTPBasicAuth for username/password authentication
 auth = HTTPBasicAuth(username, password)
-headers = {"Content-Type": "application/json"} 
+headers = {"Content-Type": "application/json"}
+
+
+def query_opensearch(payload):
+    """
+    Queries OpenSearch with a given payload and returns the raw search hits array.
+
+    Args:
+        payload (dict): The OpenSearch query body.
+
+    Returns:
+        list: A list of raw hit dictionaries from OpenSearch (each containing _source, _score, highlight, etc.),
+              or an error dictionary if the query fails.
+    """
+    print(f"[DEBUG] Initializing OpenSearch query with payload: {json.dumps(payload)}")
+    if not auth:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': "OpenSearch authentication not initialized."})
+        }
+
+    # The URL for search queries is /{index_name}/_search
+    url = f"{OPENSEARCH_ENDPOINT}/{OPENSEARCH_INDEX}/_search"
+
+    # Define a default timeout for the request in seconds
+    REQUEST_TIMEOUT = 60 # seconds
+    print(f"[DEBUG] Setting OpenSearch request timeout to {REQUEST_TIMEOUT} seconds.")
+
+    try:
+        # Use requests.post for sending a query payload with a timeout
+        response = requests.post(url, auth=auth, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+
+        json_response = response.json()
+        print(f"[DEBUG] OpenSearch query response: {json.dumps(json_response, indent=2)}")
+
+        # Return the raw 'hits' array, which includes '_score' and 'highlight'
+        hits = json_response.get('hits', {}).get('hits', [])
+        print(f"[DEBUG] Found {len(hits)} raw hits.")
+        return hits
+
+    except requests.exceptions.Timeout:
+        print(f"Error: OpenSearch query timed out after {REQUEST_TIMEOUT} seconds.")
+        return {
+            'statusCode': 504, # Gateway Timeout
+            'body': json.dumps({'error': f"OpenSearch query timed out after {REQUEST_TIMEOUT} seconds."})
+        }
+    except requests.exceptions.RequestException as e:
+        print(f"Network or request error during OpenSearch query: {e}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f"Network or request error: {str(e)}"})
+        }
+    except json.JSONDecodeError as e:
+        print(f"JSON decoding error in OpenSearch response: {e}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f"JSON decoding error: {str(e)}"})
+        }
+    except Exception as e:
+        print(f"An unexpected error occurred during OpenSearch query: {e}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
 
 def get_professional_from_opensearch(opensearch_doc_id):
     """
@@ -223,28 +287,28 @@ def get_professional_by_role_id(role_id):
             KeyConditionExpression=Key('role_id').eq(role_id),
             Limit=1
         )
-        
+
         if not role_response.get('Items'):
             print(f"No role found for role_id: {role_id}")
             return None
-            
+
         role_data = role_response['Items'][0]
         xano_user_type = role_data.get('xano_user_type')
         xano_profile_id = role_data.get('xano_profile_id')
-        
+
         if not xano_user_type or not xano_profile_id:
             print(f"Missing xano_user_type or xano_profile_id for role_id: {role_id}")
             return None
-            
+
         # Step 2: Construct OpenSearch document ID
         opensearch_doc_id = f"{xano_user_type}_{xano_profile_id}"
         print(f"[DEBUG] Looking for professional with document ID: {opensearch_doc_id}")
-        
+
         # Step 3: Get professional from OpenSearch
         profile = get_professional_from_opensearch(opensearch_doc_id)
         print(f"[DEBUG] Found profile: {profile}")
         return profile
-        
+
     except Exception as e:
         print(f"Error getting professional by role_id {role_id}: {e}")
         return None
@@ -280,10 +344,10 @@ def handle_request(event, payload):
 def create_item(payload):
     print(f' Payload: {payload}')
     print('[DEBUG INFO] Check if it is premium or has enough credits...')
-    
+
     # Retrieve authenticated pro information
     professional = payload.get('professional')
-    
+
     try:
         pro_response = table_roles.query(
             IndexName='role_id-index',
@@ -372,7 +436,7 @@ def create_item(payload):
                         except Exception as e:
                             print(f"[ERROR] Error checking for generate_single_language_invoice: {str(e)}")
                             missing_function = True
-                            
+
                         if missing_function:
                             print("[ERROR] Cannot generate invoice PDF: Missing required function")
                             pdf_file_name = ""
@@ -381,7 +445,7 @@ def create_item(payload):
                             pdf_file_name = generate_single_language_invoice(payload)
                             if pdf_file_name is None:
                                 print("[ERROR] Invoice generation returned None instead of a file path")
-                                pdf_file_name = "" 
+                                pdf_file_name = ""
                     except Exception as e:
                         print(f"[ERROR] Error generating pdf: {str(e)}")
                         pdf_file_name = "" # Provide a default empty string in case of error
@@ -412,26 +476,26 @@ def create_item(payload):
                             roles_with_same_user = table_roles.query(
                                 KeyConditionExpression=Key('xano_user_id').eq(pro_xano_user_id)
                             )
-                            
+
                             if roles_with_same_user.get('Items'):
                                 roles_count = len(roles_with_same_user['Items'])
                                 print(f'[DEBUG INFO] Found {roles_count} roles with xano_user_id: {pro_xano_user_id}')
-                                
+
                                 for role in roles_with_same_user['Items']:
                                     role_id = role.get('role_id', 'unknown')
                                     print(f'[DEBUG INFO] Updating credits for role: {role_id}')
-                                    
+
                                     # We need to use both xano_user_id AND role_id as the key
                                     # Get the role's specific key elements
                                     role_id = role.get('role_id')
-                                    
+
                                     # Create the proper composite key based on the table schema
                                     # Adjust these key elements based on your actual DynamoDB table's primary key structure
                                     item_key = {
                                         'xano_user_id': pro_xano_user_id,
                                         'role_id': role_id  # Add this if your table uses a composite key
                                     }
-                                    
+
                                     # Update the item's credits balance
                                     update_response = table_roles.update_item(
                                         Key=item_key,
@@ -439,12 +503,12 @@ def create_item(payload):
                                         ExpressionAttributeValues={':val': payload['necessary_credits']},
                                         ReturnValues='UPDATED_NEW'
                                     )
-                                    
+
                                     updated_credits = update_response.get('Attributes', {}).get('credits_balance')
                                     print(f'[DEBUG INFO] Updated role {role_id}, new credits: {updated_credits}')
                             else:
                                 print(f'[WARNING] No roles found with xano_user_id: {pro_xano_user_id}')
-                                
+
                         except Exception as e:
                             print(f'[ERROR] Failed to update role credits_balance: {str(e)}')
 
@@ -463,9 +527,9 @@ def create_item(payload):
                             homeowner_email = homeowner_profile.get('email', '') if homeowner_profile else ''
                             homeowner_system_phone = homeowner_profile.get('phone', '') if homeowner_profile else ''
                             homeowner_contact_info = {
-                                'homeowner_name': homeowner_name, 
-                                'homeowner_email': homeowner_email, 
-                                'homeowner_system_phone': homeowner_system_phone, 
+                                'homeowner_name': homeowner_name,
+                                'homeowner_email': homeowner_email,
+                                'homeowner_system_phone': homeowner_system_phone,
                                 'homeowner_language': homeowner_language if 'homeowner_language' in locals() else '',
                                 'homeowner_role_id': homeowner
                             }
@@ -565,14 +629,14 @@ def read_item_by_invoice_id(payload):
     try:
         invoice_id = payload['invoice_id']
         chat_id = payload['chat_id']
-        
+
         response = table.get_item(
             Key={
                 'invoice_id': invoice_id,
                 'chat_id': chat_id
             }
         )
-        
+
         if 'Item' in response:
             invoice = response['Item']
 
@@ -580,19 +644,19 @@ def read_item_by_invoice_id(payload):
                 print(f"[DEBUG INFO] Quote original amount: {invoice['amount']}; data type: {type(invoice['amount'])}")
                 invoice['amount'] = f"{invoice['amount'] / 100:,.2f}"
                 print(f"[DEBUG INFO] Quote transformed amount: {invoice['amount']}; data type: {type(invoice['amount'])}")
-            
+
             if invoice.get('invoice_line_items'):
                 for item in invoice['invoice_line_items']:
                     # Individual price
                     print(f"[DEBUG INFO] Item original individual price: {item['individual_price']}; data type: {type(item['individual_price'])}")
                     item['individual_price'] = f"{item['individual_price'] / 100:,.2f}"
                     print(f"[DEBUG INFO] Item transformed individual price: {item['individual_price']}; data type: {type(item['individual_price'])}")
-                    
+
                     # Sum
                     print(f"[DEBUG INFO] Item original sum: {item['sum']}; data type: {type(item['sum'])}")
                     item['sum'] = f"{item['sum'] / 100:,.2f}"
                     print(f"[DEBUG INFO] Item transformed sum: {item['sum']}; data type: {type(item['sum'])}")
-                    
+
                     # Quantity (if it's also stored in cents — confirm if this is correct)
                     print(f"[DEBUG INFO] Item original quantity: {item['item_quantity']}; data type: {type(item['item_quantity'])}")
                     item['item_quantity'] = f"{item['item_quantity'] / 100:,.2f}"
@@ -623,9 +687,9 @@ def read_items_by_chat_id(payload):
         existing_invoices = table.query(
             KeyConditionExpression=Key('chat_id').eq(chat_id)
         )
-        
+
         print(f'[DEBUG INFO] Existing invoices: {existing_invoices}')
-               
+
         if 'Items' in existing_invoices:
             invoices = existing_invoices['Items']
             for invoice in invoices:
@@ -648,7 +712,7 @@ def read_items_by_chat_id(payload):
                     print(f"[DEBUG INFO] Tax: {tax}")
                     tax_total += tax_amount
                     print(f"[DEBUG INFO] Tax total: {tax_total}; data_type: {type(tax_total)}")
-                             
+
                 invoice['total_general'] = f"{(tax_total + invoice_subtotal)/ 100:,.2f}"
 
                 if invoice.get('invoice_line_items'):
@@ -691,30 +755,30 @@ def update_item(payload):
                 'statusCode': 400,
                 'body': json.dumps({'error': 'Missing required field: invoice_id'})
             }
-        
+
         invoice_id = payload['invoice_id']
-        
+
         # Check if the invoice exists
         existing_invoice = table.get_item(
             Key={
                 'invoice_id': invoice_id
             }
         )
-        
+
         if 'Item' not in existing_invoice:
             return {
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Invoice not found'})
             }
-            
+
         # Build update expression
         update_expression = "SET "
         expression_attribute_values = {}
         expression_attribute_names = {}
-        
+
         # Don't update the primary key (invoice_id)
         skip_fields = ['invoice_id']
-        
+
         i = 0
         for key, value in payload.items():
             if key not in skip_fields:
@@ -722,10 +786,10 @@ def update_item(payload):
                 expression_attribute_names[f"#{i}"] = key
                 expression_attribute_values[f":{key}"] = value
                 i += 1
-        
+
         # Remove trailing comma and space
         update_expression = update_expression[:-2]
-        
+
         if i > 0:  # If there's something to update
             response = table.update_item(
                 Key={
@@ -736,7 +800,7 @@ def update_item(payload):
                 ExpressionAttributeValues=expression_attribute_values,
                 ReturnValues='ALL_NEW'
             )
-            
+
             return {
                 'statusCode': 200,
                 'body': json.dumps({
@@ -749,7 +813,7 @@ def update_item(payload):
                 'statusCode': 400,
                 'body': json.dumps({'error': 'No fields to update'})
             }
-            
+
     except Exception as e:
         print(f'[ERROR] Failed to update invoice: {str(e)}')
         return {
@@ -765,10 +829,10 @@ def delete_item(payload):
                 'statusCode': 400,
                 'body': json.dumps({'error': 'Missing required fields: invoice_id and chat_id'})
             }
-        
+
         invoice_id = payload['invoice_id']
         chat_id = payload['chat_id']
-        
+
         # Retrieve the invoice to get the pdf files names
         invoice_response = table.get_item(
             Key={
@@ -785,7 +849,7 @@ def delete_item(payload):
             # Retrieve the pdf files names
             pdf_files = invoice_response['Item'].get('invoice_pdf_files', [])
             pdf_names = []
-            
+
             # Add type checking to prevent string index errors
             if isinstance(pdf_files, list):
                 for item in pdf_files:
@@ -821,7 +885,7 @@ def delete_item(payload):
                 'chat_id': chat_id  # Include chat_id if it's part of the composite key
             }
         )
-        
+
         # Now we should update the chat to remove this invoice from its list
         try:
             # Get the current chat to find the invoice's position in the list
@@ -830,10 +894,10 @@ def delete_item(payload):
                     'chat_id': chat_id
                 }
             )
-            
+
             if 'Item' in chat_response and 'invoices' in chat_response['Item']:
                 invoices = chat_response['Item']['invoices']
-                
+
                 # Ensure invoices is a list
                 if not isinstance(invoices, list):
                     print(f'[WARNING] Expected invoices to be a list, got {type(invoices)}')
@@ -843,17 +907,17 @@ def delete_item(payload):
                             'message': 'Invoice deleted successfully, but chat invoices structure is invalid'
                         })
                     }
-                
+
                 # Find the invoice and create a new list without it
                 updated_invoices = []
                 invoice_found = False
-                
+
                 for invoice in invoices:
                     if isinstance(invoice, dict) and invoice.get('invoice_id') != invoice_id:
                         updated_invoices.append(invoice)
                     elif isinstance(invoice, dict) and invoice.get('invoice_id') == invoice_id:
                         invoice_found = True
-                
+
                 if invoice_found:
                     # Update the entire invoices list
                     table_chats.update_item(
@@ -865,7 +929,7 @@ def delete_item(payload):
                             ':updated_invoices': updated_invoices
                         }
                     )
-                    
+
                     return {
                         'statusCode': 200,
                         'body': json.dumps({
@@ -874,7 +938,7 @@ def delete_item(payload):
                     }
                 else:
                     print(f'[WARNING] Invoice {invoice_id} not found in chat {chat_id} invoices list')
-            
+
             # If we get here, either the chat doesn't exist, doesn't have an invoices list,
             # or we couldn't find the invoice in the list - still return success for the deletion
             return {
@@ -883,7 +947,7 @@ def delete_item(payload):
                     'message': 'Invoice deleted successfully, but could not update chat'
                 })
             }
-            
+
         except Exception as e:
             print(f'[ERROR] Failed to update chat after invoice deletion: {str(e)}')
             return {
@@ -893,7 +957,7 @@ def delete_item(payload):
                     'error': str(e)
                 })
             }
-            
+
     except Exception as e:
         print(f'[ERROR] Failed to delete invoice: {str(e)}')
         return {
@@ -962,7 +1026,7 @@ def transform_invoice_data(input_data):
         "location_of_service": input_data.get("service_address", ""),
         "invoice_id": input_data.get("invoice_id", "")
     }
-    
+
     # Set appropriate currency symbol based on currency
     currency_map = {
         "USD": "$",
@@ -971,12 +1035,12 @@ def transform_invoice_data(input_data):
         "CAD": "C$"
     }
     transformed_data["currency_symbol"] = currency_map.get(transformed_data["currency"], "$")
-    
+
     # Create temporary files for logos in /tmp directory (Lambda writable location)
     # Using tempfile.NamedTemporaryFile is good for unique names and handles creation
     temp_sender_logo = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False, dir='/tmp')
     temp_hadronlink_logo = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False, dir='/tmp')
-    
+
     # Track the paths so the caller can clean them up later
     # This is critical for the `generate_invoice` to know what to clean.
     # We'll return these in the transformed_data.
@@ -985,7 +1049,7 @@ def transform_invoice_data(input_data):
     # Download and save the logo images from URLs
     sender_logo_url = input_data.get("sender_logo_url", "")
     hadronlink_logo_url = input_data.get("hadronlink_logo_url", "")
-    
+
     # Initialize paths to None; they will be set if download is successful
     transformed_data["sender_logo_path"] = None
     transformed_data["hadronlink_logo_path"] = None
@@ -1004,7 +1068,7 @@ def transform_invoice_data(input_data):
                 print(f"[ERROR] Failed to download sender logo from {sender_logo_url}: {str(url_err)}")
             except Exception as e: # Catch any other exceptions during download/save
                 print(f"[ERROR] Unexpected error with sender logo download {sender_logo_url}: {str(e)}")
-        
+
         if hadronlink_logo_url:
             try:
                 urllib.request.urlretrieve(hadronlink_logo_url, temp_hadronlink_logo.name)
@@ -1017,7 +1081,7 @@ def transform_invoice_data(input_data):
                 print(f"[ERROR] Unexpected error with HadronLink logo download {hadronlink_logo_url}: {str(e)}")
     except Exception as e:
         print(f"[ERROR] General error during logo download process: {str(e)}")
-    
+
     # Ensure temporary file handles are closed even if download failed for one
     try:
         temp_sender_logo.close()
@@ -1037,23 +1101,23 @@ def transform_invoice_data(input_data):
         to_details.append(input_data["service_address"])
     if "customer_phone" in input_data:
         to_details.append(input_data["customer_phone"])
-    
+
     transformed_data["to"] = {"details": to_details}
-    
+
     # Format the "from" section
     from_details = []
     if "professional_name" in input_data:
         from_details.append(input_data["professional_name"])
     if "professional_phone" in input_data:
         from_details.append(input_data["professional_phone"])
-    
+
     # Add business numbers
     for business_num in input_data.get("pro_business_numbers_to_display", []):
         display_name = business_num.get("business_number_display_name", "")
         display_number = business_num.get("business_number_display_number", "")
         if display_name and display_number:
             from_details.append(f"{display_name}: {display_number}")
-    
+
     # Add insurance info
     for insurance_info in input_data.get("pro_insurance_info_to_display", []):
         company = insurance_info.get("insurance_company", "")
@@ -1066,7 +1130,7 @@ def transform_invoice_data(input_data):
                 from_details.append(f"Valid: {valid_from} - {valid_to}")
 
     transformed_data["from"] = {"details": from_details}
-    
+
     # Transform line items
     items = []
     for item in input_data.get("invoice_line_items", []):
@@ -1075,23 +1139,23 @@ def transform_invoice_data(input_data):
         # If language is empty or description in that language is empty, default to English
         if not lang or not item.get(f"item_description_{lang}", ""):
             lang = "en"
-        
+
         description = item.get(f"item_description_{lang}", item.get("item_description_en", ""))
-        
+
         # Convert cents to dollars
         rate = Decimal(str(item.get("individual_price", 0))) / Decimal('100')
         quantity = Decimal(str(item.get("item_quantity", 0)/100))
         amount = Decimal(str(item.get("sum", 0))) / Decimal('100')
-        
+
         items.append({
             "description": description,
             "quantity": quantity,
             "rate": rate,
             "amount": amount
         })
-    
+
     transformed_data["items"] = items
-    
+
     # Transform taxes
     taxes = []
     for tax in input_data.get("taxes", []):
@@ -1099,9 +1163,9 @@ def transform_invoice_data(input_data):
             "name": tax.get("tax_name", ""),
             "rate": tax.get("tax_rate_decimal", 0)
         })
-    
+
     transformed_data["taxes"] = taxes
-    
+
     # Get comments in the appropriate language
     comments = ""
     # Prioritize the requested language, then fall back to English
@@ -1112,7 +1176,7 @@ def transform_invoice_data(input_data):
         comments = input_data.get("sender_comments_en", "") # Fallback to English
 
     transformed_data["comments"] = comments
-    
+
     return transformed_data
 
 def generate_invoice(data, invoice_id, lang='en'):
@@ -1129,7 +1193,7 @@ def generate_invoice(data, invoice_id, lang='en'):
     # Get file information with a unique timestamp to prevent overwriting
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     invoice_filename = f"/tmp/{invoice_id}_{lang}_{timestamp}.pdf"
-    
+
     # Track temporary files for cleanup
     # Start with the PDF itself. We'll add downloaded images from 'data' later.
     temp_files_to_cleanup = [invoice_filename]
@@ -1161,12 +1225,12 @@ def generate_invoice(data, invoice_id, lang='en'):
                                  parent=styles['Normal'],
                                  textColor=grey80,
                                  fontSize=8))
-    
+
     styles.add(ParagraphStyle(name='GrandTotalStyle',
                                  parent=styles['Normal'],
                                  fontName='Helvetica-Bold',
                                  textColor=purple))
-    
+
     styles.add(ParagraphStyle(name='GrandTotalAmountStyle',
                                  parent=styles['Normal'],
                                  fontName='Helvetica-Bold',
@@ -1177,12 +1241,12 @@ def generate_invoice(data, invoice_id, lang='en'):
                                  parent=styles['Normal'],
                                  textColor=grey80,
                                  fontName='Helvetica-Bold'))
-                                 
+
     styles.add(ParagraphStyle(name='NormalText',
                                  parent=styles['Normal'],
                                  textColor=colors.black,
                                  fontName='Helvetica'))
-    
+
     styles.add(ParagraphStyle(name='RightAlign',
                                  parent=styles['Normal'],
                                  alignment=2))
@@ -1220,7 +1284,7 @@ def generate_invoice(data, invoice_id, lang='en'):
         sender_logo = drawing
 
     due_date_text = f'<font name="Helvetica-Bold" color="{grey80.hexval()}">{PLACEHOLDERS["due_date"][lang]}</font><font name="Helvetica">{data["due_date"]}</font>'
-    
+
     header_data = [
         [Paragraph(f"{PLACEHOLDERS['invoice_number'][lang]}{data['invoice_number']}", styles['InvoiceTitle']), "", "", sender_logo],
         [Paragraph(due_date_text, styles['Normal']), "", "", ""]
@@ -1305,7 +1369,7 @@ def generate_invoice(data, invoice_id, lang='en'):
          Paragraph(PLACEHOLDERS['items_table_fourth_column'][lang], styles['SectionTitleRight'])],
     ]
 
-    for item in data.get("items", []): 
+    for item in data.get("items", []):
         item_data.append([
             item.get("description", ""),
             f"{float(item.get('quantity', 0)):.2f}",
@@ -1331,11 +1395,11 @@ def generate_invoice(data, invoice_id, lang='en'):
 
     # Calculate subtotal (your existing code, referencing transformed_data)
     subtotal = sum(item.get("amount", Decimal('0')) for item in data.get("items", []))
-    
+
     summary_data = [
         [Paragraph(PLACEHOLDERS['subtotal'][lang], styles['SectionTitle']), "", "", f"{currency_symbol} {subtotal:,.2f}"],
     ]
-    
+
     tax_total = 0
     for tax in data.get("taxes", []): # Use the 'taxes' key from transformed data
         tax_name = tax.get("name", "")
@@ -1344,12 +1408,12 @@ def generate_invoice(data, invoice_id, lang='en'):
         tax_total += tax_amount
         tax_label = f"{tax_name} {tax_rate*100:.1f}%" # Display percentage from decimal rate
         summary_data.append([Paragraph(tax_label, styles['SectionTitle']), "", "", f"{currency_symbol} {tax_amount:,.2f}"])
-    
+
     grand_total = subtotal + tax_total
     summary_data.append([
-        Paragraph(PLACEHOLDERS['grandtotal'][lang], styles['GrandTotalStyle']), 
-        "", 
-        "", 
+        Paragraph(PLACEHOLDERS['grandtotal'][lang], styles['GrandTotalStyle']),
+        "",
+        "",
         Paragraph(f"{currency_symbol} {grand_total:,.2f}", styles['GrandTotalAmountStyle'])
     ])
 
@@ -1360,7 +1424,7 @@ def generate_invoice(data, invoice_id, lang='en'):
 
     story.append(summary_table)
     story.append(Spacer(1, 0.3 * inch))
-    
+
     # Add comments if present (your existing code, referencing transformed_data)
     if "comments" in data and data["comments"]:
         story.append(Spacer(1, 0.2*inch))
@@ -1371,7 +1435,7 @@ def generate_invoice(data, invoice_id, lang='en'):
         )
         comments = Paragraph(data["comments"], comments_style)
         story.append(comments)
-        
+
     story.append(Spacer(1, 0.5 * inch))
 
     # --- FooterCanvas remains largely the same, but now uses passed local_hadronlink_logo_path ---
@@ -1449,20 +1513,20 @@ def generate_multilingual_invoices(json_file):  # Function to generate invoices 
         # Load the JSON data
         with open(json_file, 'r', encoding='utf-8') as f:
             input_data = json.load(f)
-        
+
         # Transform the input data
         data = transform_invoice_data(input_data)
-        
+
         # Generate invoices for each language
         languages = ['en', 'fr', 'es', 'pt']
         generated_files = []
-        
+
         for lang in languages:
             invoice_file = generate_invoice(data, lang)
             generated_files.append(invoice_file)
-            
+
         print(f"All invoices generated successfully: {', '.join(generated_files)}")
-        
+
     except Exception as e:
         print(f"Error generating invoices: {str(e)}")
 
@@ -1479,36 +1543,36 @@ def cleanup_temp_files(file_list):
 def upload_pdf_to_google_storage(local_file_path, invoice_id, language):
     """
     Uploads a PDF file to Google Cloud Storage
-    
+
     Args:
         local_file_path (str): Path to the local PDF file
         invoice_id (str): ID of the invoice
         language (str): Language code of the invoice (en, fr, es, pt)
-        
+
     Returns:
         str: Public URL of the uploaded file
     """
     try:
         # Get the bucket
         bucket = client.bucket(BUCKET_NAME)
-        
+
         # Define the destination path in the bucket
         destination_blob_name = f"{BUCKET_FOLDER}/{invoice_id}_{language}.pdf"
-        
+
         # Create a blob object
         blob = bucket.blob(destination_blob_name)
-        
+
         # Upload the file
         blob.upload_from_filename(local_file_path)
-        
+
         print(f"[DEBUG INFO] File {local_file_path} uploaded to {destination_blob_name}")
-        
+
         # Return the public URL
         filename_to_save_in_table = os.path.basename(destination_blob_name)
-        
+
         # Return this filename for storage
-        return filename_to_save_in_table 
-    
+        return filename_to_save_in_table
+
     except Exception as e:
         print(f"[ERROR] Failed to upload PDF to Google Storage: {str(e)}")
         return None
@@ -1521,7 +1585,7 @@ def generate_single_language_invoice(payload):
         # Get the desired language from the invoice data
         language = invoice_data.get("language", "en")  # Default to 'en' if not specified
         invoice_id = invoice_data.get("invoice_id")
-        
+
         # If language is empty, default to 'en'
         if not language:
             language = "en"
@@ -1529,23 +1593,23 @@ def generate_single_language_invoice(payload):
         # Generate the invoice for the specified language
         invoice_file, temp_files = generate_invoice(invoice_data, invoice_id, language)
         print(f"[DEBUG INFO] Invoice '{invoice_file}' generated successfully in {language.upper()}.")
-        
+
         # Upload the generated PDF to Google Cloud Storage
         pdf_url = upload_pdf_to_google_storage(invoice_file, invoice_id, language)
-        
+
         # Initialize invoice_pdf_files list if it doesn't exist
         if 'invoice_pdf_files' not in payload:
             payload['invoice_pdf_files'] = []
-        
+
         # Add this PDF file to the invoice_pdf_files list
         pdf_info = {language: pdf_url}
         payload['invoice_pdf_files'].append(pdf_info)
-        
+
         # Clean up temporary files
         cleanup_temp_files(temp_files)
-        
+
         print(f"[DEBUG INFO] PDF uploaded successfully, URL added to payload")
-        
+
         # Return the invoice PDF filename for the response
         return pdf_url
 
@@ -1558,4 +1622,3 @@ def generate_single_language_invoice(payload):
     except Exception as e:
         print(f"[ERROR] Error generating invoice: {str(e)}")
         return None
-                    

@@ -64,7 +64,7 @@ def upload_to_gcs(image_bytes: bytes) -> str:
     try:
         bucket = gcs_client.bucket(BUCKET_NAME)
         file_uuid = str(uuid.uuid4())
-        filename = f"{file_uuid}.png"
+        filename = f"live_{file_uuid}.png"
         blob = bucket.blob(filename)
         blob.upload_from_string(image_bytes, content_type='image/png')
         url = f"https://storage.googleapis.com/{BUCKET_NAME}/{filename}"

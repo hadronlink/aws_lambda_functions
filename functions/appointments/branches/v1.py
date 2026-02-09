@@ -1,5 +1,4 @@
 import boto3
-import uuid
 import datetime
 from boto3.dynamodb.conditions import Key
 import json
@@ -7,7 +6,6 @@ import base64
 import os
 from google.oauth2 import service_account
 from google.cloud import storage
-import tempfile
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
@@ -318,9 +316,6 @@ def get_appointments_by_professional(professional):
             'statusCode': 500,
             'body': json.dumps({'message': f'Error getting appointments by professional: {str(e)}'})
         }
-
-import datetime
-from google.cloud import storage # Assuming this is available
 
 def update_ics_file_status(datasource, appointment_id, new_status):
     try:

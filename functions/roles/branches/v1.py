@@ -207,7 +207,7 @@ def get_profile_details(role_id):
 
 def handle_request(event, payload):
     """
-    Main request handler function that routes requests based on HTTP method.
+    Main handler function that routes requests based on HTTP method.
     """
     try:
         operation = event.get('httpMethod')

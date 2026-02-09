@@ -37,7 +37,7 @@ SECRETS_MANAGER_SECRET_NAME = 'opensearch-credentials'
 GEOHASH_PRECISION = 5
 # Approximate distance in meters for different geohash precision levels (for reference)
 # precision 1 ~= 5,000km
-# precision 2 ~= 1,250km  
+# precision 2 ~= 1,250km
 # precision 3 ~= 156km
 # precision 4 ~= 39km
 # precision 5 ~= 4.9km
@@ -85,7 +85,7 @@ def get_secret(secret_name):
             # Handle binary secret if needed
             print(f"Secret '{secret_name}' is not a string. This example expects a string.")
             return json.loads(get_secret_value_response['SecretBinary'].decode('utf-8'))
-  
+
 # Get OpenSearch credentials from Secrets Manager
 opensearch_credentials = get_secret(SECRETS_MANAGER_SECRET_NAME)
 username = opensearch_credentials.get('username')
@@ -93,7 +93,7 @@ password = opensearch_credentials.get('password')
 
 # Use HTTPBasicAuth for username/password authentication
 auth = HTTPBasicAuth(username, password)
-headers = {"Content-Type": "application/json"} 
+headers = {"Content-Type": "application/json"}
 
 def parse_boolean_param(param_value, default=False):
     """
@@ -120,18 +120,18 @@ def handle_request(event, payload):
         if "role_id" in payload:
             role_id = payload["role_id"]
             return getone_by_role_id(role_id)
-            
+
         elif "open_search_document_id" in payload:
             open_search_document_id = payload["open_search_document_id"]
             return getone_by_opensearch_doc_id(open_search_document_id)
-        
+
         elif "profile_on_xano" in payload:
             profile_on_xano = payload["profile_on_xano"]
             return getone_by_profile_on_xano(profile_on_xano)
-        
+
         else:
             search_query = payload.get('search_query', '')
-            
+
             # Ensure nearby_geohash_with_three_digits is a string, default to empty
             nearby_geohash_with_three_digits = payload.get('nearby_geohash_with_three_digits', '')
             if nearby_geohash_with_three_digits is None: # Handle case where it's explicitly null/None
@@ -225,7 +225,7 @@ def handle_request(event, payload):
             country = payload.get('country', '')
             if country is None:
                 country = ''
-            
+
             return search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized)
 
 def getone_by_role_id(role_id):
@@ -233,31 +233,31 @@ def getone_by_role_id(role_id):
     try:
         if not role_id:
             return create_error_response(400, "role_id is required")
-            
+
         # Step 1: Get role data from DynamoDB
         role_response = table_roles.query(
             IndexName='role_id-index',
             KeyConditionExpression=Key('role_id').eq(role_id),
             Limit=1
         )
-        
+
         if not role_response.get('Items'):
             print(f"No role found for role_id: {role_id}")
             return create_error_response(404, "Role not found")
-            
+
         role_data = role_response['Items'][0]
         xano_user_type = role_data.get('xano_user_type')
         xano_profile_id = role_data.get('xano_profile_id')
-        
+
         if not xano_user_type or not xano_profile_id:
             print(f"Missing xano_user_type or xano_profile_id for role_id: {role_id}")
             return create_error_response(404, "Invalid role data")
-            
+
         # Step 2: Construct OpenSearch document ID and get professional
         open_search_document_id = f"{xano_user_type}_{xano_profile_id}"
-        
+
         return getone_by_opensearch_doc_id(open_search_document_id)
-      
+
     except Exception as e:
         print(f"Error getting professional by role_id {role_id}: {e}")
         traceback.print_exc()
@@ -271,7 +271,7 @@ def getone_by_opensearch_doc_id(opensearch_doc_id):
 
     if not opensearch_doc_id:
             return create_error_response(400, "Document ID is required")
-            
+
     if not auth:
         return create_error_response(500, "OpenSearch authentication not available")
 
@@ -296,11 +296,11 @@ def getone_by_opensearch_doc_id(opensearch_doc_id):
 
         role_id_on_dynamo = doc['doc']['role_id_on_dynamo']
         print(f'[DEBUG] Role id on dynamo: {role_id_on_dynamo}')
-        
+
         # Calculate currently_insured and currently_certified for single document retrieval
         professional = doc.get('doc', {})
         today = date.today().isoformat()
-        
+
         # Check insurance
         insurance_info = professional.get('insurance_info', [])
         currently_insured = any(
@@ -310,7 +310,7 @@ def getone_by_opensearch_doc_id(opensearch_doc_id):
             insurance['valid_to'] >= today
             for insurance in insurance_info
         )
-        
+
         # Check certification
         certifications_list = professional.get('certifications_list', [])
         currently_certified = any(
@@ -323,7 +323,7 @@ def getone_by_opensearch_doc_id(opensearch_doc_id):
             )
             for cert in certifications_list
         )
-        
+
         # Get reviews details
         reviews_details = get_reviews_for_professional(role_id_on_dynamo)
 
@@ -407,23 +407,23 @@ def get_reviewer_details(reviewer):
             KeyConditionExpression=Key('role_id').eq(reviewer),
             Limit=1
         )
-        
+
         if not reviewer_response.get('Items'):
             return None
-            
+
         reviewer_profile = reviewer_response['Items'][0]
         print(f"[DEBUG] Reviewer profile: {reviewer_profile}")
-        
+
         if not reviewer_profile:
             return None
-            
+
         return {
             'name': reviewer_profile.get('name'),
             'location': reviewer_profile.get('location'),
             'joined_on': reviewer_profile.get('created_at'),
             'profile_picture_url': reviewer_profile.get('profile_picture_url', '')
         }
-        
+
     except Exception as e:
         print(f"Error getting reviewer details for {reviewer}: {e}")
         return None
@@ -437,26 +437,26 @@ def getone_by_profile_on_xano(profile_on_xano):
             KeyConditionExpression=Key('profile_on_xano').eq(profile_on_xano),
             Limit=1
         )
-        
+
         if not role_response.get('Items'):
             print(f"No role found for profile_on_xano: {profile_on_xano}")
             return None
-            
+
         role_data = role_response['Items'][0]
         xano_user_type = role_data.get('xano_user_type')
         xano_profile_id = role_data.get('xano_profile_id')
-        
+
         if not xano_user_type or not xano_profile_id:
             print(f"Missing xano_user_type or xano_profile_id for profile_on_xano: {profile_on_xano}")
             return None
-            
+
         # Step 2: Construct OpenSearch document ID
         opensearch_doc_id = f"{xano_user_type}_{xano_profile_id}"
         print(f"[DEBUG] Looking for professional with document ID: {opensearch_doc_id}")
-        
+
         # Step 3: Get professional from OpenSearch
         return getone_by_opensearch_doc_id(opensearch_doc_id)
-        
+
     except Exception as e:
         print(f"Error getting professional by profile_on_xano {profile_on_xano}: {e}")
         return None
@@ -498,11 +498,11 @@ def query_opensearch(opensearch_payload, include_total=False):
         # Return the raw 'hits' array, which includes '_score' and 'highlight'
         hits = json_response.get('hits', {}).get('hits', [])
         print(f"[DEBUG] Found {len(hits)} raw hits.")
-        
+
         if include_total:
             total = json_response.get('hits', {}).get('total', {}).get('value', 0)
             return {'hits': hits, 'total': total}
-        
+
         return hits
 
     except requests.exceptions.Timeout:
@@ -584,9 +584,9 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                     "type": "most_fields",
                     "tie_breaker": 0.0,
                     "fields": [
-                        "doc.trades_and_skills", 
+                        "doc.trades_and_skills",
                         "doc.profile_experience.en",
-                        "doc.projects_themes_list.en", 
+                        "doc.projects_themes_list.en",
                         "doc.portfolio.category_name_en",
                         "doc.portfolio.category_description_en",
                         "doc.unions"
@@ -597,13 +597,13 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                 # Spanish fields with Spanish analyzer
                 "multi_match": {
                     "query": search_query,
-                    "type": "most_fields", 
+                    "type": "most_fields",
                     "tie_breaker": 0.0,
                     "fields": [
                         "doc.trades_and_skills",
                         "doc.profile_experience.es",
                         "doc.projects_themes_list.es",
-                        "doc.portfolio.category_name_es", 
+                        "doc.portfolio.category_name_es",
                         "doc.portfolio.category_description_es",
                         "doc.unions"
                     ]
@@ -626,7 +626,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                 }
             },
             {
-                # Portuguese fields with Portuguese analyzer  
+                # Portuguese fields with Portuguese analyzer
                 "multi_match": {
                     "query": search_query,
                     "type": "most_fields",
@@ -655,7 +655,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
             }
         ])
         opensearch_payload["query"]["bool"]["minimum_should_match"] = 1
-        
+
         # Sort by relevance score, then by profile completion
         opensearch_payload["sort"] = [
             {
@@ -692,7 +692,7 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
         opensearch_payload["sort"].insert(0, {
             "doc.open_to_work": {"order": "desc"} # true comes before false
         })
-    
+
     if nearby_geohash_with_three_digits != '':
         opensearch_payload["query"]["bool"]["filter"].append({
             "prefix": {
@@ -731,21 +731,21 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                 "minimum_should_match": 1
             }
         }
-        
+
         if only_profile_professionals_id and len(only_profile_professionals_id) > 0:
             profile_filter["bool"]["should"].append({
                 "terms": {
                     "doc.profile_professionals_id": only_profile_professionals_id
                 }
             })
-            
+
         if only_profile_contractors_id and len(only_profile_contractors_id) > 0:
             profile_filter["bool"]["should"].append({
                 "terms": {
                     "doc.profile_contractors_id": only_profile_contractors_id
                 }
             })
-            
+
         opensearch_payload["query"]["bool"]["must"].append(profile_filter)
 
     # Add only_contractors filter if true
@@ -848,16 +848,16 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
         else:
             response_hits = response_data  # Fallback if it's just the hits list
             total = len(response_hits)
-        
+
         print(f"[DEBUG] Successfully extracted {len(response_hits)} hits, total: {total}")
-        
+
     except Exception as e:
         print(f"[ERROR] Failed to extract hits from response: {e}")
         return create_error_response(500, f"Error processing OpenSearch response: {str(e)}")
 
     # Process hits with the missing logic - ALWAYS calculate currently_insured and currently_certified
     matching_professionals = []
-    
+
     for i, hit in enumerate(response_hits):
         professional = hit.get('_source', {}).get('doc')
         if not professional:
@@ -949,13 +949,13 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
             'max_results_to_bring': max_results_to_bring,
             'has_more': total > (page * max_results_to_bring)
         }
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps(response_body, default=str),
             'headers': {'Content-Type': 'application/json'}
         }
-        
+
     except Exception as response_error:
         print(f"[ERROR] Failed to create response: {response_error}")
         traceback.print_exc()

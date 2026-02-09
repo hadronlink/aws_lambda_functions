@@ -185,7 +185,6 @@ def get_all(payload):
             'FilterExpression': filter_expr
         }
 
-        # Execute query and fetch all results (no pagination)
         print('[DEBUG] Executing DynamoDB query to fetch all items...')
         items = []
         last_evaluated_key = None

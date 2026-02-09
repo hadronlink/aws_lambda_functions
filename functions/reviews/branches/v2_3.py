@@ -48,7 +48,7 @@ password = opensearch_credentials.get('password')
 
 # Use HTTPBasicAuth for username/password authentication
 auth = HTTPBasicAuth(username, password)
-headers = {"Content-Type": "application/json"} 
+headers = {"Content-Type": "application/json"}
 
 # DynamoDB setup
 dynamodb = boto3.resource('dynamodb')
@@ -192,7 +192,7 @@ def create_review(payload):
         print(f'[DEBUG INFO] Review ID: {review_id}, Service Request ID: {service_request_id}, Chat ID: {chat_id}, Reviewed: {reviewed}')
 
         update_pro_rate_on_xano = {"rates_received_from_homeowners": []}
-        
+
         # Create appropriate review item based on reviewer type
         if 'authenticated_homeowner' in payload:
 
@@ -202,18 +202,18 @@ def create_review(payload):
                 IndexName='reviewed-index',
                 KeyConditionExpression=Key('reviewed').eq(reviewed)
             )
-            
+
             if response['Items']:
                 # Fixed: Iterate through items to collect all overall_rating_string values
                 current_rates = []
                 for item in response['Items']:
                     if 'overall_rating_string' in item:
                         current_rates.append(item['overall_rating_string'])
-                
+
                 # Convert to float list
                 rates_received_from_homeowners = [float(x) for x in current_rates]
                 update_pro_rate_on_xano['rates_received_from_homeowners'] = rates_received_from_homeowners
-            
+
             # Retrieve pro information from OpenSearch
             pro = get_pro_from_opensearch(reviewed)
             print(f'[DEBUG INFO] Pro: {pro}')
@@ -283,7 +283,7 @@ def create_review(payload):
                 'statusCode': 400,
                 'body': json.dumps({'error': 'Missing reviewer information'})
             }
-            
+
         # Create the review in DynamoDB
         table.put_item(Item=item)
 
@@ -344,7 +344,7 @@ def create_review(payload):
                     'chat_id': chat_id
                 }
             )
-            
+
             if 'Item' in original_chat:
                 print('[DEBUG INFO] Chat exists, updating...')
 
@@ -353,11 +353,11 @@ def create_review(payload):
                     'statusCode': 404,
                     'body': json.dumps({'error': 'Correspondent chat not found to be updated'})
                 }
-                
+
             # Create the review info to append to the list
             review_info = {'reviewer': reviewer, 'review_id': review_id}
             print(f'[DEBUG INFO] Review info: {review_info}')
-            
+
             # Update the reviews list in chats_table
             updated_chat = chats_table.update_item(
                 Key={
@@ -373,7 +373,7 @@ def create_review(payload):
                 },
                 ReturnValues='UPDATED_NEW'
             )
-            
+
             return {
                 'statusCode': 201,
                 'body': json.dumps({
@@ -382,7 +382,7 @@ def create_review(payload):
                     'update_pro_rate_on_xano': update_pro_rate_on_xano
                 }, default=decimal_default)
             }
-            
+
         except Exception as e:
             print(f'[ERROR] Failed to update chat: {str(e)}')
             # The review was created but chat update failed
@@ -393,7 +393,7 @@ def create_review(payload):
                     'error': str(e)
                 })
             }
-            
+
     except Exception as e:
         print(f'[ERROR] Failed to create review: {str(e)}')
         return {
@@ -436,7 +436,7 @@ def get_one(review_id):
                 'review_id': review_id
             }
         )
-        
+
         if 'Item' in response:
             return {
                 'statusCode': 200,
@@ -460,7 +460,7 @@ def get_reviews_by_service_request(service_request_id):
             IndexName='service_request_id-index',
             KeyConditionExpression=Key('service_request_id').eq(service_request_id)
         )
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps(response['Items'], default=decimal_default)
@@ -496,7 +496,7 @@ def get_reviews_by_reviewer(reviewer):
             IndexName='reviewer-index',
             KeyConditionExpression=Key('reviewer').eq(reviewer)
         )
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps(response['Items'], default=str)
@@ -514,7 +514,7 @@ def get_reviews_by_reviewed(reviewed):
             IndexName='reviewed-index',
             KeyConditionExpression=Key('reviewed').eq(reviewed)
         )
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps(response['Items'], default=str)
@@ -531,7 +531,7 @@ def get_all_reviews():
         response = table.scan()
         print(response)
         items = response.get('Items', [])
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps(items, default=str)
@@ -548,23 +548,23 @@ def update_review(payload):
         update_pro_rate_on_xano = {}
 
         update_pro_rate_on_xano['new_rate_received'] = float(payload['overall_rating_string'])
-        
+
         review_id = payload['review_id']
         current_time = datetime.datetime.utcnow().isoformat()
-        
+
         # First check if the review exists and get current item
         response = table.get_item(
             Key={
                 'review_id': review_id
             }
         )
-        
+
         if 'Item' not in response:
             return {
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Review not found'})
             }
-        
+
         existing_item = response['Item']
         print(f'[DEBUG INFO] Existing review: {existing_item}')
 
@@ -584,7 +584,7 @@ def update_review(payload):
                 xano_contractor_id = 0
         update_pro_rate_on_xano['xano_professional_id'] = xano_professional_id
         update_pro_rate_on_xano['xano_contractor_id'] = xano_contractor_id
-        
+
         # Previous rate under this review
         previous_rate_for_this_review = float(existing_item['overall_rating_string'])
         print(f'[DEBUG INFO] Previous rate for this review: {previous_rate_for_this_review}')
@@ -607,15 +607,15 @@ def update_review(payload):
             print(f'[DEBUG INFO] Removing previous rate for this review from the general list...')
             rates_received_from_homeowners.remove(previous_rate_for_this_review)
             print(f'[DEBUG INFO] New list: {rates_received_from_homeowners}')
-            
+
             update_pro_rate_on_xano['rates_received_from_homeowners_less_updated_one'] = rates_received_from_homeowners
-        
+
         # Prepare update expression
         update_expression = "SET updated_at = :updated_at"
         expression_values = {
             ':updated_at': current_time
         }
-        
+
         # Fields that should not be modified during updates
         protected_fields = [
             'review_id',         # Primary key - cannot be modified
@@ -625,20 +625,20 @@ def update_review(payload):
             'reviewer',          # Relationship field - should not change
             'reviewed'           # Relationship field - should not change
         ]
-        
+
         # Add fields to update based on payload, skipping protected fields
         for key, value in payload.items():
             if key not in protected_fields and key != 'review_id':
                 placeholder = f":{key.replace('-', '_')}"
                 update_expression += f", {key} = {placeholder}"
-                
+
                 # Convert Decimal-compatible fields
                 if isinstance(value, (int, float)):
                     expression_values[placeholder] = Decimal(str(value))
                 else:
                     expression_values[placeholder] = value
 
-            
+
         # Update the review
         table.update_item(
             Key={
@@ -647,7 +647,7 @@ def update_review(payload):
             UpdateExpression=update_expression,
             ExpressionAttributeValues=expression_values
         )
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps({'message': 'Review updated successfully', 'update_pro_rate_on_xano': update_pro_rate_on_xano})
@@ -667,27 +667,27 @@ def delete_review(payload):
     """Delete a review by its ID"""
     try:
         review_id = payload['review_id']
-        
+
         # Check if the review exists before deletion
         response = table.get_item(
             Key={
                 'review_id': review_id
             }
         )
-        
+
         if 'Item' not in response:
             return {
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Review not found'})
             }
-        
+
         # Delete the review
         table.delete_item(
             Key={
                 'review_id': review_id
             }
         )
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps({'message': 'Review deleted successfully'})
@@ -700,7 +700,8 @@ def delete_review(payload):
 
 def decimal_default(obj):
     if isinstance(obj, Decimal):
-        return float(obj)
+        if obj % 1 == 0:
+            return int(obj)
+        else:
+            return float(obj)
     raise TypeError
-#   C I / C D   t e s t   -   1 0 / 1 4 / 2 0 2 5   1 4 : 4 0 : 2 4  
- 

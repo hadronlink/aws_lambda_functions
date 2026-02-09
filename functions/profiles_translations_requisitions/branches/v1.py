@@ -10,7 +10,7 @@ table = dynamodb.Table('profiles_translations_requisitions')
 def handle_request(event, payload):
     """Main entry point for dev branch"""
     operation = event['httpMethod']
-    
+
     try:
         if operation == 'POST':
             return create_item(payload)
@@ -51,7 +51,7 @@ def create_item(payload):
 def get_summary_by_role_id(role_id):
     print(f'[DEBUG INFO] Getting summary by role_id: {role_id}')
     items = []
-    
+
     # Query and handle pagination
     response = table.query(
         KeyConditionExpression=Key("role_id").eq(role_id)
