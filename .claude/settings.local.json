@@ -10,7 +10,11 @@
       "Bash(git cherry-pick:*)",
       "Bash(copy:*)",
       "Bash(powershell -Command \"Copy-Item 'c:\\\\Users\\\\FabianaBarril\\\\Documents\\\\lambda-functions-repo\\\\functions\\\\perks\\\\branches\\\\dev.py' -Destination 'c:\\\\Users\\\\FabianaBarril\\\\Documents\\\\lambda-functions-repo\\\\functions\\\\perks\\\\branches\\\\v2_3.py'\":*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(git mv:*)",
+      "Bash(ls -la \"c:\\\\Users\\\\FabianaBarril\\\\Documents\\\\lambda-functions-repo\\\\functions\"\" | grep -E \"^d \")",
+      "Bash(diffstat:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
