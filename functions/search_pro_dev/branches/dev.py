@@ -17,11 +17,6 @@ from requests.auth import HTTPBasicAuth
 from datetime import date
 from botocore.exceptions import ClientError
 
-# # Add the 'package' directory to the Python path
-# sys.path.insert(0, os.path.join(os.getcwd(), 'package'))
-
-# import geohash2  # Importing again after adding to path
-
 # DynamoDB setup
 dynamodb = boto3.resource('dynamodb')
 table_roles = dynamodb.Table('roles_dev')
