@@ -14,7 +14,10 @@
       "Bash(git mv:*)",
       "Bash(ls -la \"c:\\\\Users\\\\FabianaBarril\\\\Documents\\\\lambda-functions-repo\\\\functions\"\" | grep -E \"^d \")",
       "Bash(diffstat:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(for dir in functions/*/branches/__init__.py)",
+      "Bash(do)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

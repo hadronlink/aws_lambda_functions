@@ -61,9 +61,10 @@ opensearch_credentials = get_secret(SECRETS_MANAGER_SECRET_NAME)
 username = opensearch_credentials.get('username')
 password = opensearch_credentials.get('password')
 
-# Use HTTPBasicAuth for username/password authentication
-auth = HTTPBasicAuth(username, password)
-headers = {"Content-Type": "application/json"}
+# Use a persistent HTTP session for connection pooling (reuses TCP/TLS connections)
+http_session = requests.Session()
+http_session.auth = HTTPBasicAuth(username, password)
+http_session.headers.update({"Content-Type": "application/json"})
 
 def parse_boolean_param(param_value, default=False):
     """
@@ -125,8 +126,8 @@ def query_opensearch(opensearch_payload, include_total=False):
     """
     Queries OpenSearch with a given payload and returns the raw search hits array.
     """
-    print(f"[DEBUG] Initializing OpenSearch query with payload: {json.dumps(opensearch_payload)}")
-    if not auth:
+    print(f"[DEBUG] Querying OpenSearch (size={opensearch_payload.get('size')}, from={opensearch_payload.get('from')})")
+    if not http_session.auth:
         return {
             'statusCode': 500,
             'body': json.dumps({'error': "OpenSearch authentication not initialized."})
@@ -137,14 +138,14 @@ def query_opensearch(opensearch_payload, include_total=False):
     print(f"[DEBUG] Setting OpenSearch request timeout to {REQUEST_TIMEOUT} seconds.")
 
     try:
-        response = requests.post(url, auth=auth, headers=headers, json=opensearch_payload, timeout=REQUEST_TIMEOUT)
+        response = http_session.post(url, json=opensearch_payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         json_response = response.json()
-        print(f"[DEBUG] OpenSearch query response: {json.dumps(json_response, indent=2)}")
 
         hits = json_response.get('hits', {}).get('hits', [])
-        print(f"[DEBUG] Found {len(hits)} raw hits.")
+        took = json_response.get('took', '?')
+        print(f"[DEBUG] OpenSearch responded in {took}ms, {len(hits)} hits returned.")
 
         if include_total:
             total = json_response.get('hits', {}).get('total', {}).get('value', 0)
@@ -195,17 +196,37 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
         except Exception as e:
             print(f"[WARN] Failed to decode reference_geohash '{reference_geohash}': {e}")
 
-    # When custom sorting is needed, fetch more results from offset 0
-    needs_custom_sort = (trades_on_top and len(trades_on_top) > 0) or ref_lat is not None
-    if needs_custom_sort:
-        fetch_size = max_results_to_bring * 3
-        fetch_offset = 0
-    else:
-        fetch_size = max_results_to_bring
-        fetch_offset = offset
+    # Build sort criteria — push all sorting to OpenSearch for efficiency
+    sort_criteria = []
+
+    if trades_on_top and len(trades_on_top) > 0:
+        sort_criteria.append({
+            "_script": {
+                "type": "number",
+                "script": {
+                    "lang": "painless",
+                    "source": "int tid = doc.containsKey('trade_id') && doc['trade_id'].size() > 0 ? (int)doc['trade_id'].value : -1; int idx = params.trades.indexOf(tid); return idx >= 0 ? idx : 999;",
+                    "params": {
+                        "trades": trades_on_top
+                    }
+                },
+                "order": "asc"
+            }
+        })
+
+    if ref_lat is not None:
+        sort_criteria.append({
+            "_geo_distance": {
+                "location": {"lat": ref_lat, "lon": ref_lon},
+                "order": "asc",
+                "unit": "km",
+                "distance_type": "arc"
+            }
+        })
+
+    sort_criteria.append({"created_at": {"order": "desc"}})
 
     opensearch_payload = {
-        "explain": False,
         "query": {
             "bool": {
                 "must": [],
@@ -213,12 +234,10 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
                 "filter": []
             }
         },
-        "size": fetch_size,
-        "from": fetch_offset,
+        "size": max_results_to_bring,
+        "from": offset,
         "track_total_hits": True,
-        "sort": [
-            {"created_at": {"order": "desc"}}
-        ],
+        "sort": sort_criteria,
         "_source": True
     }
 
@@ -314,7 +333,7 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             }
         })
 
-    print(f"[DEBUG] OpenSearch payload: {json.dumps(opensearch_payload, indent=2)}")
+    print(f"[DEBUG] OpenSearch query built: size={opensearch_payload['size']}, from={opensearch_payload['from']}, sort_fields={[list(s.keys())[0] if isinstance(s, dict) else s for s in opensearch_payload.get('sort', [])]}")
 
     # Execute OpenSearch query with total count
     print('[DEBUG] Executing OpenSearch query...')
@@ -340,8 +359,8 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
         print(f"[ERROR] Failed to extract hits from response: {e}")
         return create_error_response(500, f"Error processing OpenSearch response: {str(e)}")
 
-    # Process hits
-    all_jobs = []
+    # Process hits — OpenSearch already sorted and paginated the results
+    matching_jobs = []
 
     for i, hit in enumerate(response_hits):
         job = hit.get('_source')
@@ -349,67 +368,23 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             print(f"[WARNING] No '_source' found in hit {i}, skipping")
             continue
 
-        # Get OpenSearch score for relevance
         opensearch_score = hit.get('_score') or 0.0
 
-        # Build job result with ALL fields from the document
         job_result = job.copy()
         job_result['opensearch_score'] = opensearch_score
 
-        all_jobs.append(job_result)
+        matching_jobs.append(job_result)
 
-    # Apply custom sorting: trade priority, then distance, then created_at
-    if needs_custom_sort:
-        print(f"[DEBUG] Applying custom sorting with trades_on_top: {trades_on_top}, ref_lat: {ref_lat}, ref_lon: {ref_lon}")
-
-        def sort_key(job):
-            # Trade priority: matching trades first, in order
-            job_trade_id = job.get('trade_id')
-            if trades_on_top and job_trade_id in trades_on_top:
-                priority = trades_on_top.index(job_trade_id)
-            else:
-                priority = 999
-
-            # Distance from reference point (ascending - nearest first)
-            if ref_lat is not None:
-                location = job.get('location', {})
-                job_lat = location.get('lat')
-                job_lon = location.get('lon')
-                if job_lat is not None and job_lon is not None:
-                    distance = haversine_distance(ref_lat, ref_lon, job_lat, job_lon)
-                else:
-                    distance = 999999.0
-            else:
-                distance = 0
-
-            # Created_at descending (newest first)
-            created_at = job.get('created_at', 0)
-            return (priority, distance, -created_at)
-
-        all_jobs.sort(key=sort_key)
-        print(f"[DEBUG] Applied custom sorting to {len(all_jobs)} jobs")
-
-    # Apply pagination after sorting
-    start_index = (page - 1) * max_results_to_bring
-    end_index = start_index + max_results_to_bring
-    matching_jobs = all_jobs[start_index:end_index]
-
-    print(f"[DEBUG] Pagination: showing jobs {start_index + 1}-{min(end_index, len(all_jobs))} of {len(all_jobs)} total")
-    print(f"[DEBUG] Successfully processed {len(matching_jobs)} jobs for this page")
+    print(f"[DEBUG] Successfully processed {len(matching_jobs)} jobs for page {page}")
 
     # Create final response
     try:
-        if needs_custom_sort:
-            response_total = len(all_jobs)
-        else:
-            response_total = total
-
         response_body = {
             'items': matching_jobs,
-            'total': response_total,
+            'total': total,
             'page': page,
             'max_results_to_bring': max_results_to_bring,
-            'has_more': response_total > (page * max_results_to_bring)
+            'has_more': total > (page * max_results_to_bring)
         }
 
         return {
