@@ -1,7 +1,6 @@
 import json
 import boto3
 import datetime
-import json
 import math
 import sys
 import os

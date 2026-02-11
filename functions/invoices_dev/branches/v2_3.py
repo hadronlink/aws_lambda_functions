@@ -11,6 +11,7 @@ from requests.auth import HTTPBasicAuth
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 from PIL import Image
 
@@ -321,11 +322,7 @@ def handle_request(event, payload):
         if operation == 'PUT':
             return update_item(payload)
         elif operation == 'POST':
-            # Check if this is a request to generate a PDF invoice
-            if payload.get('action') == 'generate_pdf':
-                return generate_pdf_invoice(payload)
-            else:
-                return create_item(payload)
+            return create_item(payload)
         elif operation == 'GET':
             return handle_get(event, payload)
         elif operation == 'DELETE':

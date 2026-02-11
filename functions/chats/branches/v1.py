@@ -1,7 +1,7 @@
 import json
 import boto3
 import datetime
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 import requests
 from requests.auth import HTTPBasicAuth
 from botocore.exceptions import ClientError

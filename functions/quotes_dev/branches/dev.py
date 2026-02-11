@@ -5,11 +5,9 @@ import base64
 import tempfile
 import socket
 from decimal import Decimal, ROUND_HALF_UP
-from itertools import count
 import urllib.request
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
-from quote_generator import lambda_handler_generate_quote
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Flowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -191,10 +189,7 @@ def handle_request(event, payload):
             print(f'[DEBUG INFO] Payload: {payload}')
             return read_items_by_chat_id(payload)
         elif operation == 'POST':
-            if payload.get('action') == 'generate_pdf':
-                return generate_pdf_quote(payload)
-            else:
-                return create_item(payload)
+            return create_item(payload)
         elif operation == 'PUT':
             return update_item(payload)
         elif operation == 'DELETE' and payload:
