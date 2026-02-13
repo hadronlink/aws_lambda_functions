@@ -16,7 +16,7 @@ from botocore.exceptions import ClientError
 
 # OpenSearch configuration for jobs
 OPENSEARCH_ENDPOINT = 'https://search-connecus-home-xter5mxymdzivmnio2iuvwgg4a.us-east-2.es.amazonaws.com'
-OPENSEARCH_INDEX = 'jobs_from_xano_dev'
+OPENSEARCH_INDEX = 'jobs_from_xano_live'
 AWS_REGION = 'us-east-2'
 SECRETS_MANAGER_SECRET_NAME = 'opensearch-credentials'
 
@@ -134,7 +134,8 @@ def query_opensearch(opensearch_payload, include_total=False):
         }
 
     url = f"{OPENSEARCH_ENDPOINT}/{OPENSEARCH_INDEX}/_search"
-    REQUEST_TIMEOUT = 60  # seconds
+    REQUEST_TIMEOUT = 120  # seconds
+    print(f"[DEBUG] Querying OpenSearch URL: {url}")
     print(f"[DEBUG] Setting OpenSearch request timeout to {REQUEST_TIMEOUT} seconds.")
 
     try:
@@ -145,6 +146,10 @@ def query_opensearch(opensearch_payload, include_total=False):
 
         hits = json_response.get('hits', {}).get('hits', [])
         took = json_response.get('took', '?')
+        # Log which actual index the results came from
+        if hits and len(hits) > 0:
+            actual_index = hits[0].get('_index', 'unknown')
+            print(f"[DEBUG] Results coming from actual index: {actual_index}")
         print(f"[DEBUG] OpenSearch responded in {took}ms, {len(hits)} hits returned.")
 
         if include_total:
@@ -161,9 +166,23 @@ def query_opensearch(opensearch_payload, include_total=False):
         }
     except requests.exceptions.RequestException as e:
         print(f"Network or request error during OpenSearch query: {e}")
+        # Try to get the detailed error message from OpenSearch
+        error_detail = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_body = e.response.json()
+                print(f"[DEBUG] OpenSearch error response: {json.dumps(error_body, indent=2)}")
+                error_detail = f"{str(e)} - Details: {json.dumps(error_body)}"
+            except:
+                try:
+                    error_text = e.response.text
+                    print(f"[DEBUG] OpenSearch error response (text): {error_text}")
+                    error_detail = f"{str(e)} - Details: {error_text}"
+                except:
+                    pass
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': f"Network or request error: {str(e)}"})
+            'body': json.dumps({'error': f"Network or request error: {error_detail}"})
         }
     except json.JSONDecodeError as e:
         print(f"JSON decoding error in OpenSearch response: {e}")
@@ -205,7 +224,14 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
                 "type": "number",
                 "script": {
                     "lang": "painless",
-                    "source": "int tid = doc.containsKey('trade_id') && doc['trade_id'].size() > 0 ? (int)doc['trade_id'].value : -1; int idx = params.trades.indexOf(tid); return idx >= 0 ? idx : 999;",
+                    "source": """
+                        if (doc['trade_id'].size() == 0) {
+                            return 999;
+                        }
+                        int tid = (int)doc['trade_id'].value;
+                        int idx = params.trades.indexOf(tid);
+                        return idx >= 0 ? idx : 999;
+                    """,
                     "params": {
                         "trades": trades_on_top
                     }
@@ -220,7 +246,8 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
                 "location": {"lat": ref_lat, "lon": ref_lon},
                 "order": "asc",
                 "unit": "km",
-                "distance_type": "arc"
+                "distance_type": "arc",
+                "ignore_unmapped": True
             }
         })
 
@@ -231,7 +258,14 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             "bool": {
                 "must": [],
                 "should": [],
-                "filter": []
+                "filter": [
+                    # Exclude soft-deleted records
+                    {
+                        "term": {
+                            "soft_delete": False
+                        }
+                    }
+                ]
             }
         },
         "size": max_results_to_bring,
@@ -334,6 +368,9 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
         })
 
     print(f"[DEBUG] OpenSearch query built: size={opensearch_payload['size']}, from={opensearch_payload['from']}, sort_fields={[list(s.keys())[0] if isinstance(s, dict) else s for s in opensearch_payload.get('sort', [])]}")
+
+    # Print the full payload for debugging
+    print(f"[DEBUG] Full OpenSearch payload: {json.dumps(opensearch_payload, indent=2)}")
 
     # Execute OpenSearch query with total count
     print('[DEBUG] Executing OpenSearch query...')

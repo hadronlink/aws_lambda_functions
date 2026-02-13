@@ -61,9 +61,10 @@ opensearch_credentials = get_secret(SECRETS_MANAGER_SECRET_NAME)
 username = opensearch_credentials.get('username')
 password = opensearch_credentials.get('password')
 
-# Use HTTPBasicAuth for username/password authentication
-auth = HTTPBasicAuth(username, password)
-headers = {"Content-Type": "application/json"}
+# Use a persistent HTTP session for connection pooling (reuses TCP/TLS connections)
+http_session = requests.Session()
+http_session.auth = HTTPBasicAuth(username, password)
+http_session.headers.update({"Content-Type": "application/json"})
 
 def parse_boolean_param(param_value, default=False):
     """
@@ -125,26 +126,31 @@ def query_opensearch(opensearch_payload, include_total=False):
     """
     Queries OpenSearch with a given payload and returns the raw search hits array.
     """
-    print(f"[DEBUG] Initializing OpenSearch query with payload: {json.dumps(opensearch_payload)}")
-    if not auth:
+    print(f"[DEBUG] Querying OpenSearch (size={opensearch_payload.get('size')}, from={opensearch_payload.get('from')})")
+    if not http_session.auth:
         return {
             'statusCode': 500,
             'body': json.dumps({'error': "OpenSearch authentication not initialized."})
         }
 
     url = f"{OPENSEARCH_ENDPOINT}/{OPENSEARCH_INDEX}/_search"
-    REQUEST_TIMEOUT = 60  # seconds
+    REQUEST_TIMEOUT = 120  # seconds
+    print(f"[DEBUG] Querying OpenSearch URL: {url}")
     print(f"[DEBUG] Setting OpenSearch request timeout to {REQUEST_TIMEOUT} seconds.")
 
     try:
-        response = requests.post(url, auth=auth, headers=headers, json=opensearch_payload, timeout=REQUEST_TIMEOUT)
+        response = http_session.post(url, json=opensearch_payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         json_response = response.json()
-        print(f"[DEBUG] OpenSearch query response: {json.dumps(json_response, indent=2)}")
 
         hits = json_response.get('hits', {}).get('hits', [])
-        print(f"[DEBUG] Found {len(hits)} raw hits.")
+        took = json_response.get('took', '?')
+        # Log which actual index the results came from
+        if hits and len(hits) > 0:
+            actual_index = hits[0].get('_index', 'unknown')
+            print(f"[DEBUG] Results coming from actual index: {actual_index}")
+        print(f"[DEBUG] OpenSearch responded in {took}ms, {len(hits)} hits returned.")
 
         if include_total:
             total = json_response.get('hits', {}).get('total', {}).get('value', 0)
@@ -160,9 +166,23 @@ def query_opensearch(opensearch_payload, include_total=False):
         }
     except requests.exceptions.RequestException as e:
         print(f"Network or request error during OpenSearch query: {e}")
+        # Try to get the detailed error message from OpenSearch
+        error_detail = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_body = e.response.json()
+                print(f"[DEBUG] OpenSearch error response: {json.dumps(error_body, indent=2)}")
+                error_detail = f"{str(e)} - Details: {json.dumps(error_body)}"
+            except:
+                try:
+                    error_text = e.response.text
+                    print(f"[DEBUG] OpenSearch error response (text): {error_text}")
+                    error_detail = f"{str(e)} - Details: {error_text}"
+                except:
+                    pass
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': f"Network or request error: {str(e)}"})
+            'body': json.dumps({'error': f"Network or request error: {error_detail}"})
         }
     except json.JSONDecodeError as e:
         print(f"JSON decoding error in OpenSearch response: {e}")
@@ -210,7 +230,14 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             "bool": {
                 "must": [],
                 "should": [],
-                "filter": []
+                "filter": [
+                    # Exclude soft-deleted records
+                    {
+                        "term": {
+                            "soft_delete": False
+                        }
+                    }
+                ]
             }
         },
         "size": fetch_size,
@@ -314,7 +341,10 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
             }
         })
 
-    print(f"[DEBUG] OpenSearch payload: {json.dumps(opensearch_payload, indent=2)}")
+    print(f"[DEBUG] OpenSearch query built: size={opensearch_payload['size']}, from={opensearch_payload['from']}")
+
+    # Print the full payload for debugging
+    print(f"[DEBUG] Full OpenSearch payload: {json.dumps(opensearch_payload, indent=2)}")
 
     # Execute OpenSearch query with total count
     print('[DEBUG] Executing OpenSearch query...')
