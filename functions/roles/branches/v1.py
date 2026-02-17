@@ -17,7 +17,7 @@ table = dynamodb.Table('roles')
 
 # OpenSearch configuration for professional profiles
 OPENSEARCH_ENDPOINT = 'https://search-connecus-home-xter5mxymdzivmnio2iuvwgg4a.us-east-2.es.amazonaws.com'
-OPENSEARCH_PROFILES_INDEX = 'pros_from_xano_live'  # This index is specifically for professionals
+OPENSEARCH_PROFILES_INDEX = 'pros_from_xano_live'
 AWS_REGION = 'us-east-2'
 SECRETS_MANAGER_SECRET_NAME = 'opensearch-credentials'
 
