@@ -264,6 +264,12 @@ def search_jobs(search_query, page, only_certified, only_unionized, only_with_ca
                         "term": {
                             "soft_delete": False
                         }
+                    },
+                    # Only include open jobs
+                    {
+                        "term": {
+                            "is_open": True
+                        }
                     }
                 ]
             }
