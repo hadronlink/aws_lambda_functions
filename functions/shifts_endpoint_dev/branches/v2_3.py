@@ -347,8 +347,8 @@ def handle_request(event, payload):
                         "end_datetime": item['end_datetime'],
                         "available_workers": []
                     }
-                    initial_search_date = f'{item['start_datetime'][0:10]}T00:00:00+00:00'
-                    end_search_date = f'{item['end_datetime'][0:10]}T23:59:59+00:00'
+                    initial_search_date = f"{item['start_datetime'][0:10]}T00:00:00+00:00"
+                    end_search_date = f"{item['end_datetime'][0:10]}T23:59:59+00:00"
                     search_value = json.dumps([initial_search_date, end_search_date])
                     for worker in my_workforce:
                         profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
@@ -394,8 +394,8 @@ def handle_request(event, payload):
 
                 # Check if each available worker has already been invited to another conflicted shift
                 for item in batch_response:
-                    initial_search_date = f'{item['start_datetime'][0:10]}T00:00:00+00:00'
-                    end_search_date = f'{item['end_datetime'][0:10]}T23:59:59+00:00'
+                    initial_search_date = f"{item['start_datetime'][0:10]}T00:00:00+00:00"
+                    end_search_date = f"{item['end_datetime'][0:10]}T23:59:59+00:00"
                     search_value = json.dumps([initial_search_date, end_search_date])
                     for worker in item['available_workers']:
                         profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
