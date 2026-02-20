@@ -351,7 +351,7 @@ def handle_request(event, payload):
                     end_search_date = f"{item['end_datetime'][0:10]}T23:59:59+00:00"
                     search_value = json.dumps([initial_search_date, end_search_date])
                     for worker in my_workforce:
-                        profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
+                        profile_ref = f"Professional_{worker['worker_professional_id']}" if (worker['worker_professional_id'] != 0) else f"Contractor_{worker['worker_contractor_id']}"
                         other_profiles = worker.get('other_profiles', [])
                         print(f'profile_ref: {profile_ref}, and other_profiles: {other_profiles}')
 
@@ -377,7 +377,7 @@ def handle_request(event, payload):
                                 index_name=index2
                             )
                             all_shifts_other_profiles.extend(response_other_profile['Items'])
-                            print(f'shifts for {other_profile_ref}: {response_other_profile['Items']}')
+                            print(f"shifts for {other_profile_ref}: {response_other_profile['Items']}")
 
                         # Check availability with main profile
                         worker_is_available = is_available(shifts=shifts, new_shift=new_shift)
@@ -398,7 +398,7 @@ def handle_request(event, payload):
                     end_search_date = f"{item['end_datetime'][0:10]}T23:59:59+00:00"
                     search_value = json.dumps([initial_search_date, end_search_date])
                     for worker in item['available_workers']:
-                        profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
+                        profile_ref = f"Professional_{worker['worker_professional_id']}" if (worker['worker_professional_id'] != 0) else f"Contractor_{worker['worker_contractor_id']}"
                         query_pending_profile = query_filter(
                             partition_key = profile_ref,
                             attribute_name = 'start_datetime',
@@ -421,7 +421,7 @@ def handle_request(event, payload):
                             # Find all workers in available_workers that belong to other_profiles
                             for other_item in batch_response:
                                 for other_worker in other_item['available_workers']:
-                                    other_profile_ref = f'Professional_{other_worker['worker_professional_id']}' if (other_worker['worker_professional_id'] != 0) else f'Contractor_{other_worker['worker_contractor_id']}'
+                                    other_profile_ref = f"Professional_{other_worker['worker_professional_id']}" if (other_worker['worker_professional_id'] != 0) else f"Contractor_{other_worker['worker_contractor_id']}"
                                     if other_profile_ref in other_profiles:
                                         other_worker['has_other_invite'] = True
 
@@ -440,7 +440,7 @@ def handle_request(event, payload):
                         slot_size_minutes=slot_size_minutes,
                     )
                     for worker in my_workforce:
-                        profile_ref = f'Professional_{worker['worker_professional_id']}' if (worker['worker_professional_id'] != 0) else f'Contractor_{worker['worker_contractor_id']}'
+                        profile_ref = f"Professional_{worker['worker_professional_id']}" if (worker['worker_professional_id'] != 0) else f"Contractor_{worker['worker_contractor_id']}"
                         other_profiles = worker.get('other_profiles', [])
 
                         # Query for main profile
