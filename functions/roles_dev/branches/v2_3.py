@@ -170,6 +170,32 @@ def get_profile_details(role_id):
             print(f"[ERROR] Error retrieving homeowner profile from DynamoDB for {role_id}: {str(e)}")
             profile_data = None
 
+    elif role_id.startswith('PROPMNG#'):
+        print(f"[DEBUG] Retrieving property manager profile from DynamoDB roles_dev table using GSI for role_id: {role_id}")
+        try:
+            response = table.query(
+                IndexName='role_id-index',
+                KeyConditionExpression=Key('role_id').eq(role_id),
+                ProjectionExpression='#n, email, phone, #l, phone_country',
+                ExpressionAttributeNames={'#n': 'name', '#l': 'language'}
+            )
+
+            items = response.get('Items', [])
+            if items:
+                item = items[0]
+                profile_data = {
+                    'name': item.get('name'),
+                    'email': item.get('email'),
+                    'phone': item.get('phone'),
+                    'language': item.get('language')
+                }
+                print(f"[DEBUG] Property manager profile retrieved: {profile_data}")
+            else:
+                print(f"[WARNING] Property manager profile not found in roles_dev GSI for role_id: {role_id}")
+        except Exception as e:
+            print(f"[ERROR] Error retrieving property manager profile from DynamoDB for {role_id}: {str(e)}")
+            profile_data = None
+
     elif role_id.startswith('PRO#'):
         print(f"[DEBUG] Retrieving professional profile from OpenSearch index '{OPENSEARCH_PROFILES_INDEX}' for role_id: {role_id}")
         query_payload = {
