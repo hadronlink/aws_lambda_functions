@@ -215,13 +215,14 @@ def handle_request(event, payload):
             only_open_to_work = parse_boolean_param(payload.get('only_open_to_work'), default=False)
             only_with_car = parse_boolean_param(payload.get('only_with_car'), default=False)
             only_unionized = parse_boolean_param(payload.get('only_unionized'), default=False)
+            include_property_owners = parse_boolean_param(payload.get('include_property_owners'), default=True)
 
             # Handle 'country' parameter
             country = payload.get('country', '')
             if country is None:
                 country = ''
 
-            return search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized)
+            return search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized, include_property_owners)
 
 def getone_by_role_id(role_id):
     """Get professional profile from OpenSearch by role_id using two-step process"""
@@ -525,7 +526,7 @@ def query_opensearch(opensearch_payload, include_total=False):
             'body': json.dumps({'error': str(e)})
         }
 
-def search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized):
+def search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized, include_property_owners=True):
     """Search for professionals who are open to work with pagination"""
 
     print('[DEBUG INFO] Finding matching professionals using OpenSearch approach...')
@@ -802,6 +803,14 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
         opensearch_payload["query"]["bool"]["must"].append({
             "exists": {
                 "field": "doc.unions"
+            }
+        })
+
+    # Add include_property_owners filter if false
+    if not include_property_owners:
+        opensearch_payload["query"]["bool"]["must"].append({
+            "term": {
+                "doc.is_property_owner": False
             }
         })
 
