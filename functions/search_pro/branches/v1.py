@@ -221,7 +221,12 @@ def handle_request(event, payload):
             if country is None:
                 country = ''
 
-            return search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized, include_property_owners)
+            # Handle 'bot_profile' parameter
+            bot_profile = payload.get('bot_profile', '')
+            if bot_profile is None:
+                bot_profile = ''
+
+            return search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized, include_property_owners, bot_profile)
 
 def getone_by_role_id(role_id):
     """Get professional profile from OpenSearch by role_id using two-step process"""
@@ -525,7 +530,7 @@ def query_opensearch(opensearch_payload, include_total=False):
             'body': json.dumps({'error': str(e)})
         }
 
-def search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized, include_property_owners=True):
+def search_professionals_open_to_work(search_query, nearby_geohash_with_three_digits, only_insured, minimum_rating, languages, max_results_to_bring, page, only_profile_professionals_id, only_profile_contractors_id, only_contractors, country, only_professionals, only_certified, only_aboriginal, only_disability, only_open_to_work, only_with_car, only_unionized, include_property_owners=True, bot_profile=''):
     """Search for professionals who are open to work with pagination"""
 
     print('[DEBUG INFO] Finding matching professionals using OpenSearch approach...')
@@ -554,13 +559,9 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
                 ],
                 "should": [],
                 "filter": [],
-                "must_not": [
-                    {
-                        "term": {
-                            "_id": "Contractor_139"
-                        }
-                    }
-                ]
+                "must_not": (
+                    [{"term": {"_id": bot_profile}}] if bot_profile != '' else []
+                )
             }
         },
         "size": max_results_to_bring,
