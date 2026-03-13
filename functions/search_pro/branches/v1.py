@@ -937,7 +937,8 @@ def search_professionals_open_to_work(search_query, nearby_geohash_with_three_di
             'currently_certified': currently_certified,  # ALWAYS included
             'profile_image_complete_path': professional.get('profile_image_complete_path', ''),
             'reviews_details': reviews_details,  # Add the reviews details
-            'unions': professional.get('unions', [])
+            'unions': professional.get('unions', []),
+            'is_property_manager': professional.get('profile_name') == 'Property Manager Profile'
         })
 
     print(f"[DEBUG] Successfully processed {len(matching_professionals)} professionals")
